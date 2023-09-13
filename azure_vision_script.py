@@ -5,6 +5,13 @@ from llama_hub.tools.azure_cv.base import AzureCVToolSpec
 import openai
 openai.api_key = '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'
 from llama_index.agent import OpenAIAgent
+import re
+from datetime import datetime
+from llama_hub.tools.azure_cv.base import AzureCVToolSpec
+# Setup OpenAI Agent
+import openai
+openai.api_key = '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'
+from llama_index.agent import OpenAIAgent
 
 def get_ramq(image_url):
     cv_tool = AzureCVToolSpec(
@@ -25,13 +32,15 @@ def get_ramq(image_url):
     # Regex to extract RAMQ using both patterns
     ramq_patterns = [
         r"([\w]{4}(?:\s[\d]{4}){2})",
-        r"([A-Z]{4}\d{8})"
+        r"([A-Z]{4}\d{8})",
+        r"([A-Z]{4})\s*([\d]{8})",
+        r"([\w]{4})\s*([\d]{4})\s*([\d]{4})"
     ]
     ramq = None
     for pattern in ramq_patterns:
         ramq_match = re.search(pattern, output_text)
         if ramq_match:
-            ramq = ramq_match.group(1)
+            ramq = ''.join(ramq_match.groups())  # Join all matched groups to form the complete RAMQ
             break
     
     if not ramq:
@@ -44,22 +53,35 @@ def get_ramq(image_url):
     last_name_prefix = ramq[:3] if ramq else None
     first_name_initial = ramq[3] if ramq else None
 
+    # Split the text into words
+    words = re.findall(r'\b\w+\b', output_text)
+    # Filter words based on the prefix (case-insensitive) and length criteria
+    filtered_words = [word for word in words if word.lower().startswith(last_name_prefix.lower()) and len(word) >= 5]
 
-    # Find the full last name in the output text starting with the last_name_prefix
-    last_name_pattern = rf"\b{last_name_prefix}[A-Z-]+\b"
-    last_name_match = re.search(last_name_pattern, output_text)
-    last_name = last_name_match.group(0) if last_name_match else None
+    # Exclude the RAMQ from the matches
+    filtered_words = [word for word in filtered_words if word != ramq]
 
-     # Finding the index after the last name appears in the output text
-    last_name_index = output_text.find(last_name) + len(last_name)
+    # Extract last name if match found
+    if len(filtered_words) > 0:
+        last_name = filtered_words[0]
+        last_name_index = output_text.find(last_name)
+    else:
+        last_name = None
 
-    # Extracting the first character of the first name from RAMQ
-    first_name_prefix = ramq[3] if ramq else None
-
-    # Finding the first occurrence of a name after the last name index, starting with the first_name_prefix
-    first_name_pattern = rf"\b{first_name_prefix}[A-Z-]+\b"
-    first_name_match = re.search(first_name_pattern, output_text[last_name_index:])
-    first_name = first_name_match.group(0) if first_name_match else None
+    # Search for first name
+    # Search within 2 words before and after last name
+    if (last_name != None):
+        first_name_search_text = output_text[max(0,last_name_index-20):last_name_index+20]
+        print(first_name_search_text)
+        # Find first name starting with first letter 
+        first_name_pattern = rf"\b{first_name_initial}[A-Z-]+\w+\b"
+        first_name_match = re.search(first_name_pattern, first_name_search_text)
+        if first_name_match:
+            first_name = first_name_match.group(0)
+        else:
+            first_name = None
+    else:
+        first_name = None
 
     # Extracting the gender using the third number of the RAMQ
     gender_digit = int(ramq[6]) if ramq else None
@@ -90,6 +112,7 @@ def get_ramq(image_url):
 
     return ramq, last_name, first_name, dob, gender
 
+
 # Usage
 image_url = "https://i.ibb.co/4VyHrkV/Screenshot-2023-08-15-at-10-52-28-PM.png"
 try:
@@ -98,7 +121,7 @@ try:
     print(f"Last Name: {last_name}")
     print(f"First Name: {first_name}")
     print(f"Date of Birth: {dob}")
-    print(f"Date of Birth: {gender}")
+    print(f"Gender: {gender}")
 except ValueError as e:
     print(e)
 
