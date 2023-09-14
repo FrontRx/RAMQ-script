@@ -42,3 +42,16 @@ The script will print the following details:
 ## Troubleshooting
 
 If you encounter any issues, please check the dependencies and ensure you are using a valid image URL.
+
+## Creating server via python flask
+
+- pip3 install virtualenv
+- python3 -m venv env
+- . env/bin/activate
+- pip3 install Flask
+- set FLASK_APP=index.py
+- set FLASK_ENV=development
+- export FLASK_APP=index.py
+- export FLASK_ENV=development
+- flask run
+- . env/bin/deactivate
