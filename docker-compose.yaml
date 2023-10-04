@@ -1,0 +1,9 @@
+version: '3.8'
+services:
+  web:
+    build: .
+    ports:
+      - "10000:10000"
+    environment:
+      - FLASK_ENV=development
+      - HEADER_TOKEN=7929adaa-625d-11ee-8c99-0242ac120002

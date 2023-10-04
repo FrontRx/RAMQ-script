@@ -1,3 +1,4 @@
+import os
 from flask import Flask,jsonify,request
 from azure_vision_script import get_ramq
 
@@ -5,9 +6,16 @@ app = Flask(__name__)
 
 @app.before_request
 def check_token():
-    token = request.headers.get('RAMQ-FrontRx-Billr')
-    if token is None or token != 'sampleToken':
-        return jsonify({"error": "Invalid or missing token"}), 401
+    if request.path == '/extract_json_from_image':
+        token = request.headers.get('RAMQ-FrontRx-Billr')
+        headerToken = os.environ.get('HEADER_TOKEN')
+        if token is None or token != headerToken:
+            return jsonify({"error": "Invalid or missing token"}), 401
+
+
+@app.route('/')
+def hello():
+    return jsonify(alive='true')
 
 @app.route('/extract_json_from_image',methods=['POST'])
 def extract_json_from_image():
