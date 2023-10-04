@@ -24,12 +24,12 @@ This script extracts RAMQ (Régie de l'assurance maladie du Québec) details fro
 Run the script with the image URL as a command-line argument:
 
 ```bash
-python azure_vision_script.py "https://example.com/path/to/image.png"
+python3 main.py "https://example.com/path/to/image.png"
 ```
 
 Replace the URL with the actual image URL you want to process.
 
-## Output
+## Data
 
 The script will print the following details:
 
@@ -38,6 +38,18 @@ The script will print the following details:
 - First Name
 - Date of Birth
 - Gender
+
+## Deployment as REST API
+
+- pip3 install virtualenv
+- python3 -m venv env
+- . env/bin/activate
+- pip3 install Flask
+- pip3 install -r requirements.txt
+- export FLASK_APP=api.py
+- export FLASK_ENV=development
+- flask run
+- . env/bin/deactivate
 
 ## Troubleshooting
 
