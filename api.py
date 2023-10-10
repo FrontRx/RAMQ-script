@@ -7,7 +7,7 @@ app = Flask(__name__)
 @app.before_request
 def check_token():
     if request.path == '/extract_json_from_image':
-        token = request.headers.get('RAMQ-FrontRx-Billr')
+        token = request.headers.get('RAMQ-Billr-API-Key')
         headerToken = os.environ.get('HEADER_TOKEN')
         if token is None or token != headerToken:
             return jsonify({"error": "Invalid or missing token"}), 401
