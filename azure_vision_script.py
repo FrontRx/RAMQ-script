@@ -1,15 +1,16 @@
+import os
 import re
 from datetime import datetime
-from llama_hub.tools.azure_cv.base import AzureCVToolSpec
+
+from dotenv import load_dotenv
+
 # Setup OpenAI Agent
 import openai
+from llama_hub.tools.azure_cv.base import AzureCVToolSpec
 from llama_index.agent import OpenAIAgent
-from dotenv import load_dotenv
-import os
 
 # Load environment variables from the .env file in the current directory
 load_dotenv()
-
 openai.api_key = os.environ.get("OPEN_AI_API_KEY")
 
 
