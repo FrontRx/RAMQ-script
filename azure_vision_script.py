@@ -11,7 +11,7 @@ from llama_index.agent import OpenAIAgent
 
 # Load environment variables from the .env file in the current directory
 load_dotenv()
-openai.api_key = os.environ.get("OPEN_AI_API_KEY")
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 
 def get_ramq(image_url):
