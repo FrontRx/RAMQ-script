@@ -3,12 +3,19 @@ from datetime import datetime
 from llama_hub.tools.azure_cv.base import AzureCVToolSpec
 # Setup OpenAI Agent
 import openai
-openai.api_key = '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'
 from llama_index.agent import OpenAIAgent
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from the .env file in the current directory
+load_dotenv()
+
+openai.api_key = os.environ.get("OPEN_AI_API_KEY")
+
 
 def get_ramq(image_url):
     cv_tool = AzureCVToolSpec(
-        api_key='72223d70f92e45a2a7579a123f244587',
+        api_key= os.environ.get("AZURE_API_KEY"),
         resource='frontrx'
     )
 
