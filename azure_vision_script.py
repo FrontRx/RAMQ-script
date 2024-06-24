@@ -1,21 +1,22 @@
+import os
 import re
 from datetime import datetime
-from llama_hub.tools.azure_cv.base import AzureCVToolSpec
+
+from dotenv import load_dotenv
+
 # Setup OpenAI Agent
 import openai
-openai.api_key = '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'
-from llama_index.agent import OpenAIAgent
-import re
-from datetime import datetime
 from llama_hub.tools.azure_cv.base import AzureCVToolSpec
-# Setup OpenAI Agent
-import openai
-openai.api_key = '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'
 from llama_index.agent import OpenAIAgent
+
+# Load environment variables from the .env file in the current directory
+load_dotenv()
+openai.api_key = os.environ.get("OPENAI_API_KEY")
+
 
 def get_ramq(image_url):
     cv_tool = AzureCVToolSpec(
-        api_key='72223d70f92e45a2a7579a123f244587',
+        api_key= os.environ.get("AZURE_API_KEY"),
         resource='frontrx'
     )
 
@@ -86,13 +87,14 @@ def get_ramq(image_url):
     # Extracting the gender using the third number of the RAMQ
     gender_digit = int(ramq[6]) if ramq else None
     if gender_digit in [5, 6]:
-        gender = 'Female'
+
+        gender = 'female'
         birth_month_first_digit = str(gender_digit - 5)
     elif gender_digit in [0, 1]:
-        gender = 'Male'
+        gender = 'male'
         birth_month_first_digit = str(gender_digit)
     else:
-        gender = 'Unknown'
+        gender = 'other'
         birth_month_first_digit = '0'
 
     # Extracting birth year, month, and day from RAMQ
@@ -111,39 +113,3 @@ def get_ramq(image_url):
     dob = f"{birth_year}-{birth_month}-{birth_day}"
 
     return ramq, last_name, first_name, dob, gender
-
-
-# Usage
-image_url = "https://i.ibb.co/4VyHrkV/Screenshot-2023-08-15-at-10-52-28-PM.png"
-try:
-    ramq, last_name, first_name, dob, gender = get_ramq(image_url)
-    print(f"RAMQ: {ramq}")
-    print(f"Last Name: {last_name}")
-    print(f"First Name: {first_name}")
-    print(f"Date of Birth: {dob}")
-    print(f"Gender: {gender}")
-except ValueError as e:
-    print(e)
-
-# In case the RAMQ is not found, it will print the error message
-
-
-import argparse
-
-def main():
-    parser = argparse.ArgumentParser(description='Get RAMQ details from an image URL.')
-    parser.add_argument('image_url', type=str, help='The URL of the image to process.')
-    args = parser.parse_args()
-
-    try:
-        ramq, last_name, first_name, dob, gender = get_ramq(args.image_url)
-        print(f"RAMQ: {ramq}")
-        print(f"Last Name: {last_name}")
-        print(f"First Name: {first_name}")
-        print(f"Date of Birth: {dob}")
-        print(f"Gender: {gender}")
-    except ValueError as e:
-        print(e)
-
-if __name__ == "__main__":
-    main()

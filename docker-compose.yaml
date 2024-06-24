@@ -1,0 +1,14 @@
+version: '3.8'
+services:
+  api-ramq-reader:
+    build: .
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+    ports:
+      - "10000:10000"
+    environment:
+      - FLASK_ENV=${FLASK_ENV}
+      - HEADER_TOKEN=${HEADER_TOKEN}
