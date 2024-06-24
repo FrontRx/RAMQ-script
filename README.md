@@ -1,12 +1,13 @@
 
 # Azure Vision RAMQ Extractor
 
-This script extracts RAMQ (Régie de l'assurance maladie du Québec) details from an image URL using Azure Computer Vision Tool.
+This script extracts RAMQ (Régie de l'assurance maladie du Québec) details from an image URL using Anthropic Claude SONNET v3.0.
 
 ## Requirements
 
 - Python 3.x
-- Azure SDK and other dependencies used in the script
+- LlamaIndex
+- LlamaIndex MultiModal Anthropic
 
 ## Installation
 
