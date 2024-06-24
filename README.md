@@ -26,7 +26,6 @@ Run the script with the image URL as a command-line argument:
 ```bash
 
 python3 main.py "https://example.com/path/to/image.png"
->>>>>>> c3a05049b7d93a4efcb1b379ff75d9bd23a6d850
 ```
 
 Replace the URL with the actual image URL you want to process.

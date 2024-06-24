@@ -1,6 +1,4 @@
-
-
-from azure_vision_script import get_ramq
+from anthropic_vision_script import get_ramq
 import argparse
 
 # Usage
