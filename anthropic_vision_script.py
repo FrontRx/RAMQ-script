@@ -49,19 +49,25 @@ class PersonInfo(BaseModel):
     )
 
 
-def get_ramq(image_url):
-
-    # load image documents from urls
-    image_documents = load_image_urls([image_url])
-
-    response = anthropic_mm_llm.complete(
-        prompt=f"Extract the person's full name, date of birth, gender, and RAMQ number from the image and output as JSON using keys first_name, last_name, date_of_birth in %Y/%m/%d format and ramq which should have 4 letters and 8 digits. Make sure you get the right answer in JSON. Do not be verbose.",
-        image_documents=image_documents,
-    )
+def get_ramq(input_data, is_image=False):
+    if is_image:
+        # Load image documents from URLs
+        image_documents = load_image_urls([input_data])
+        prompt = f"Extract the person's full name, date of birth, gender, and RAMQ number from the image and output as JSON using keys first_name, last_name, date_of_birth in %Y/%m/%d format and ramq which should have 4 letters and 8 digits. Make sure you get the right answer in JSON. Do not be verbose."
+        response = anthropic_mm_llm.complete(
+            prompt=prompt,
+            image_documents=image_documents,
+        )
+    else:
+        # Process free text input
+        prompt = f"Extract the person's full name, date of birth, gender, and RAMQ number from the text and output as JSON using keys first_name, last_name, date_of_birth in %Y/%m/%d format and ramq which should have 4 letters and 8 digits. Make sure you get the right answer in JSON. Do not be verbose. Here is the text: {input_data}"
+        response = anthropic_mm_llm.complete(
+            prompt=prompt,
+            image_documents=None,
+        )
 
     # Parse the JSON response
     import json
-
     data = json.loads(response.text)
 
     # Extract date of birth
@@ -84,4 +90,5 @@ def get_ramq(image_url):
         ramq=data["ramq"],
     )
 
-    return ramq, last_name, first_name, dob, gender
+# Remove the duplicate return statement
+# return ramq, last_name, first_name, dob, gender

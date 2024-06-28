@@ -1,32 +1,27 @@
 from anthropic_vision_script import get_ramq
 import argparse
 
-# Usage
-# image_url = "https://i.ibb.co/4VyHrkV/Screenshot-2023-08-15-at-10-52-28-PM.png"
-# try:
-#     ramq, last_name, first_name, dob, gender = get_ramq(image_url)
-#     print(f"RAMQ: {ramq}")
-#     print(f"Last Name: {last_name}")
-#     print(f"First Name: {first_name}")
-#     print(f"Date of Birth: {dob}")
-#     print(f"Gender: {gender}")
-# except ValueError as e:
-#     print(e)
-
-# # In case the RAMQ is not found, it will print the error message
-
 def main():
-    parser = argparse.ArgumentParser(description='Get RAMQ details from an image URL.')
-    parser.add_argument('image_url', type=str, help='The URL of the image to process.')
+    parser = argparse.ArgumentParser(description='Get RAMQ details from an image URL or text.')
+    parser.add_argument('input', type=str, help='The URL of the image or text to process.')
+    parser.add_argument('--is_image', type=str, required=False, help='Specify if the input is an image URL (True/False).')
     args = parser.parse_args()
+    # Determine if input_data is an image URL or a string
+    if args.is_image is None:
+        import re
+        url_pattern = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
+        is_image = bool(url_pattern.match(args.input))
+    else:
+        is_image = args.is_image.lower() == 'true'
 
     try:
-        ramq, last_name, first_name, dob, gender = get_ramq(args.image_url)
-        print(f"RAMQ: {ramq}")
-        print(f"Last Name: {last_name}")
-        print(f"First Name: {first_name}")
-        print(f"Date of Birth: {dob}")
-        print(f"Gender: {gender}")
+        is_image = args.is_image.lower() == 'true'
+        person_info = get_ramq(args.input, is_image)
+        print(f"RAMQ: {person_info.ramq}")
+        print(f"Last Name: {person_info.last_name}")
+        print(f"First Name: {person_info.first_name}")
+        print(f"Date of Birth: {person_info.date_of_birth}")
+        print(f"Gender: {person_info.gender}")
     except ValueError as e:
         print(e)
 
