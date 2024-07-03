@@ -1,6 +1,6 @@
 import os
 from flask import Flask,jsonify,request
-from azure_vision_script import get_ramq
+from anthropic_vision_script import get_ramq
 
 app = Flask(__name__)
 
