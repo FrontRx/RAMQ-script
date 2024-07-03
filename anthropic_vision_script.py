@@ -23,7 +23,7 @@ anthropic_mm_llm = AnthropicMultiModal(
     anthropic_api_key=anthropic_api_key,
 )
 
-def get_ramq(input_data, is_image=False):
+def get_ramq(input_data, is_image=True):
     if is_image:
         # Load image documents from URLs
         image_documents = load_image_urls([input_data])
