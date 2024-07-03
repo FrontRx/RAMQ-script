@@ -17,6 +17,12 @@ from io import BytesIO
 from PIL import Image
 import tempfile
 
+class PersonInfo(BaseModel):
+    first_name: str
+    last_name: str
+    date_of_birth: datetime
+    gender: Optional[str] = None
+    ramq: str = Field(..., pattern=r"^[A-Z]{4}\d{8}$", description="RAMQ number in format AAAA00000000")
 
 # Load environment variables from the .env file in the current directory
 load_dotenv()
@@ -86,4 +92,12 @@ def get_ramq(input_data, is_image=True):
         elif gender_digit in [0, 1]:
             gender = "male"
 
-    return data["ramq"], data["last_name"], data["first_name"], dob, gender
+    person_info = PersonInfo(
+        first_name=data["first_name"],
+        last_name=data["last_name"],
+        date_of_birth=dob,
+        gender=gender,
+        ramq=data["ramq"]
+    )
+
+    return person_info.ramq, person_info.last_name, person_info.first_name, person_info.date_of_birth, person_info.gender
