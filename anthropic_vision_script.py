@@ -5,19 +5,6 @@ from typing import Optional
 import re
 from pydantic import BaseModel, Field
 
-
-class PersonInfo(BaseModel):
-    first_name: str
-    last_name: str
-    date_of_birth: datetime
-    gender: Optional[str] = None
-    ramq: str = Field(
-        ...,
-        pattern=r"^[A-Z]{4}\d{8}$",
-        description="RAMQ number in format AAAA00000000",
-    )
-
-
 from dotenv import load_dotenv
 from llama_index.multi_modal_llms.anthropic import AnthropicMultiModal
 
@@ -35,19 +22,6 @@ anthropic_mm_llm = AnthropicMultiModal(
     model="claude-3-sonnet-20240229",
     anthropic_api_key=anthropic_api_key,
 )
-
-
-class PersonInfo(BaseModel):
-    first_name: str
-    last_name: str
-    date_of_birth: datetime
-    gender: Optional[str] = None
-    ramq: str = Field(
-        ...,
-        pattern=r"^[A-Z]{4}\d{8}$",
-        description="RAMQ number in format AAAA00000000",
-    )
-
 
 def get_ramq(input_data, is_image=False):
     if is_image:
@@ -82,13 +56,4 @@ def get_ramq(input_data, is_image=False):
         elif gender_digit in [0, 1]:
             gender = "male"
 
-    return PersonInfo(
-        first_name=data["first_name"],
-        last_name=data["last_name"],
-        date_of_birth=dob,
-        gender=gender,
-        ramq=data["ramq"],
-    )
-
-# Remove the duplicate return statement
-# return ramq, last_name, first_name, dob, gender
+    return data["ramq"], data["last_name"], data["first_name"], dob, gender
