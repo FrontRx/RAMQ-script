@@ -33,7 +33,7 @@ def extract_json_from_image():
 
     except ValueError as e:
         print(e)
-        return jsonify({"error": e}), 401
+        return "", 500
 
 if __name__ == '__main__':
     app.run(debug=True, port = 9000)
