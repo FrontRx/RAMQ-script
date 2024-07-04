@@ -32,7 +32,7 @@ def extract_json_from_image():
         })
 
     except ValueError as e:
-        print(e)
+        print(e, flush=True)
         return "", 500
 
 if __name__ == '__main__':
