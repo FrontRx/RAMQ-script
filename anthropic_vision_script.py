@@ -20,7 +20,7 @@ import tempfile
 class PersonInfo(BaseModel):
     first_name: str
     last_name: str
-    date_of_birth: datetime
+    date_of_birth: str
     gender: Optional[str] = None
     ramq: str = Field(..., pattern=r"^[A-Z]{4}\d{8}$", description="RAMQ number in format AAAA00000000")
 
@@ -51,7 +51,7 @@ def get_ramq(input_data, is_image=True):
 
                 # Load the image as an ImageDocument
                 image_documents = [ImageDocument(image_path=image_file)]
-                prompt = f"Extract the person's full name, date of birth, gender, and RAMQ number from the image and output as JSON using keys first_name, last_name, date_of_birth in %Y/%m/%d format and ramq which should have 4 letters and 8 digits. Make sure you get the right answer in JSON. Do not be verbose."
+                prompt = f"Extract the person's full name, date of birth, gender, and RAMQ number from the image and output as JSON using keys first_name, last_name, date_of_birth in %Y-%m-%d format and ramq which should have 4 letters and 8 digits. Make sure you get the right answer in JSON. Do not be verbose."
                 response = anthropic_mm_llm.complete(
                     prompt=prompt,
                     image_documents=image_documents,
@@ -61,7 +61,7 @@ def get_ramq(input_data, is_image=True):
 
     else:
         # Process free text input
-        prompt = f"Extract the person's full name, date of birth, gender, and RAMQ number from the text and output as JSON using keys first_name, last_name, date_of_birth in %Y/%m/%d format and ramq which should have 4 letters and 8 digits. Make sure you get the right answer in JSON. Do not be verbose. Here is the text: {input_data}"
+        prompt = f"Extract the person's full name, date of birth, gender, and RAMQ number from the text and output as JSON using keys first_name, last_name, date_of_birth in %Y-%m-%d format and ramq which should have 4 letters and 8 digits. Make sure you get the right answer in JSON. Do not be verbose. Here is the text: {input_data}"
         response = anthropic_mm_llm.complete(
             prompt=prompt,
             image_documents=None,
@@ -72,16 +72,12 @@ def get_ramq(input_data, is_image=True):
     data = json.loads(response.text)
     # Extract date of birth
     dob_str = data["date_of_birth"]
+
+    # Validate dob
     try:
-        dob = datetime.strptime(dob_str, "%Y/%m/%d").date()
+        dob = datetime.strptime(dob_str, "%Y-%m-%d").date()
     except ValueError:
-        try:
-            dob = datetime.strptime(dob_str, "%Y-%m-%d").date()
-        except ValueError:
-            try:
-                dob = datetime.strptime(dob_str, "%Y-%m-%d %H:%M:%S").date()
-            except ValueError:
-                raise ValueError(f"Unsupported date format: {dob_str}")
+        raise ValueError(f"Unsupported date format: {dob_str}")
 
     # Extract gender based on RAMQ
     gender = None
@@ -95,7 +91,7 @@ def get_ramq(input_data, is_image=True):
     person_info = PersonInfo(
         first_name=data["first_name"],
         last_name=data["last_name"],
-        date_of_birth=dob,
+        date_of_birth=dob_str,
         gender=gender,
         ramq=data["ramq"]
     )
