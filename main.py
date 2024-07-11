@@ -16,12 +16,12 @@ def main():
 
     try:
         is_image = args.is_image.lower() == 'true'
-        person_info = get_ramq(args.input, is_image)
-        print(f"RAMQ: {person_info.ramq}")
-        print(f"Last Name: {person_info.last_name}")
-        print(f"First Name: {person_info.first_name}")
-        print(f"Date of Birth: {person_info.date_of_birth}")
-        print(f"Gender: {person_info.gender}")
+        ramq, last_name, first_name, dob, gender = get_ramq(args.input, is_image)
+        print(f"RAMQ: {ramq}")
+        print(f"Last Name: {last_name}")
+        print(f"First Name: {first_name}")
+        print(f"Date of Birth: {dob}")
+        print(f"Gender: {gender}")
     except ValueError as e:
         print(e)
 

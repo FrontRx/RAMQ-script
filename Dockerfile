@@ -10,12 +10,8 @@ RUN . env/bin/activate
 
 # Install Flask and any other dependencies
 RUN pip3 install Flask
-COPY requirements.txt /app/build
-RUN pip3 install -r requirements.txt
-
-# Set environment variables
-ENV FLASK_APP=api.py
-ENV FLASK_ENV=development
+COPY requirements_docker.txt /app/build
+RUN pip3 install -r requirements_docker.txt
 
 # Expose port 10000 for Flask
 EXPOSE 10000
