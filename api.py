@@ -20,9 +20,16 @@ def hello():
 @app.route('/extract_json_from_image',methods=['POST'])
 def extract_json_from_image():
     request_data = request.get_json()
+    is_image = request_data['is_image']
     image_url =  request_data['image_url'] 
+    text = request_data['text']
+
+    input_data = text
+    if is_image:
+        input_data = image_url
+
     try:
-        ramq, last_name, first_name, dob, gender = get_ramq(image_url)
+        ramq, last_name, first_name, dob, gender = get_ramq(input_data, is_image)
         return jsonify({
             "ramq": ramq,
             "last_name":last_name,
