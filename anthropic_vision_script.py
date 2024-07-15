@@ -114,7 +114,7 @@ def get_ramq(input_data, is_image=True):
     person_info = PersonInfo(
         first_name=data["first_name"],
         last_name=data["last_name"],
-        date_of_birth=dob,
+        date_of_birth=dob_str,
         gender=gender,
         ramq=data["ramq"]
     )
