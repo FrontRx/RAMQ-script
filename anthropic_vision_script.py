@@ -1,9 +1,8 @@
 import os
 import re
-from datetime import datetime, date as date_type
+from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field
-
 
 from dotenv import load_dotenv
 from llama_index.multi_modal_llms.anthropic import AnthropicMultiModal
@@ -27,7 +26,7 @@ anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
 class PersonInfo(BaseModel):
     first_name: str
     last_name: str
-    date_of_birth: date_type
+    date_of_birth: str
     gender: Optional[str] = None
     ramq: str = Field(..., pattern=r"^[A-Z]{4}\d{8}$", description="RAMQ number in format AAAA00000000")
 
@@ -69,7 +68,7 @@ def get_ramq(input_data, is_image=True):
 
                 # Load the image as an ImageDocument
                 image_documents = [ImageDocument(image_path=image_file)]
-                prompt = "Perform OCR. Extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. Extract the person's first name, last name, date of birth, and RAMQ number. Output as JSON with keys: 'first_name', 'last_name', 'date_of_birth' (in %Y/%m/%d format), and 'ramq'. Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object."
+                prompt = "Perform OCR. Extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. Extract the person's first name, last name, date of birth, and RAMQ number. Output as JSON with keys: 'first_name', 'last_name', 'date_of_birth' (in %Y-%m-%d format), and 'ramq'. Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object."
                 response = anthropic_mm_llm.complete(
                     prompt=prompt,
                     image_documents=image_documents,
@@ -79,7 +78,7 @@ def get_ramq(input_data, is_image=True):
 
     else:
         # Process free text input
-        prompt = f"From this text locate and extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. Extract the person's first name, last name, date of birth, and RAMQ number. Output as JSON with keys: 'first_name', 'last_name', 'date_of_birth' (in %Y/%m/%d format), and 'ramq'. Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object. Here is the text: {input_data}"
+        prompt = f"From this text locate and extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. Extract the person's first name, last name, date of birth, and RAMQ number. Output as JSON with keys: 'first_name', 'last_name', 'date_of_birth' (in %Y-%m-%d format), and 'ramq'. Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object. Here is the text: {input_data}"
         response = anthropic_mm_llm.complete(
             prompt=prompt,
             image_documents=None,
@@ -91,16 +90,11 @@ def get_ramq(input_data, is_image=True):
     # Extract date of birth
     dob_str = data["date_of_birth"]
     
+    # Validate dob
     try:
-        dob = datetime.strptime(dob_str, "%Y/%m/%d").date()
+        dob = datetime.strptime(dob_str, "%Y-%m-%d").date()
     except ValueError:
-        try:
-            dob = datetime.strptime(dob_str, "%Y-%m-%d").date()
-        except ValueError:
-            try:
-                dob = datetime.strptime(dob_str, "%Y-%m-%d %H:%M:%S").date()
-            except ValueError:
-                raise ValueError(f"Unsupported date format: {dob_str}")
+        raise ValueError(f"Unsupported date format: {dob_str}")
 
     # Extract gender based on RAMQ
     gender = None
