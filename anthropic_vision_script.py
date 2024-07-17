@@ -90,7 +90,7 @@ def get_ramq(input_data, is_image=True):
     data = json.loads(response.text)
     # Extract date of birth
     dob_str = data["date_of_birth"]
-    print(dob_str)
+    
     try:
         dob = datetime.strptime(dob_str, "%Y/%m/%d").date()
     except ValueError:
