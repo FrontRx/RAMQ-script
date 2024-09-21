@@ -34,7 +34,7 @@ def extract_json_from_image():
             "ramq": ramq,
             "last_name":last_name,
             "first_name":first_name,
-            "dob": dob,
+            "dob": dob.strftime("%Y-%m-%d"),
             "gender":gender
         })
 
