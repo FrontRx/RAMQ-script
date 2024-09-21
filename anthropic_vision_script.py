@@ -23,12 +23,17 @@ from typing import List, Optional
 load_dotenv()
 anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
 
+
 class PersonInfo(BaseModel):
     first_name: str
     last_name: str
-    date_of_birth: str
+    date_of_birth: datetime
     gender: Optional[str] = None
-    ramq: str = Field(..., pattern=r"^[A-Z]{4}\d{8}$", description="RAMQ number in format AAAA00000000")
+    ramq: str = Field(
+        ...,
+        pattern=r"^[A-Z]{4}\d{8}$",
+        description="RAMQ number should have 4 letters followed by 8 digits",
+    )
 
 
 class PatientInfo(BaseModel):
@@ -62,13 +67,13 @@ def get_ramq(input_data, is_image=True):
                 width_percent = (600 / float(img.size[0]))
                 height_size = int((float(img.size[1]) * float(width_percent)))
                 img = img.resize((600, height_size), Image.LANCZOS)
-                
+
                 image_file = os.path.join(temp_dir, "temp_image.png")
                 img.save(image_file)
 
                 # Load the image as an ImageDocument
                 image_documents = [ImageDocument(image_path=image_file)]
-                prompt = "Perform OCR. Extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. Extract the person's first name, last name, date of birth, and RAMQ number. Output as JSON with keys: 'first_name', 'last_name', 'date_of_birth' (in %Y-%m-%d format), and 'ramq'. Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object."
+                prompt = "Perform OCR. Extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. First name starts with the 4th letter of the RAMQ AND Should be a name! Extract the person's first name, last name, date of birth, and RAMQ number. Output as JSON with keys: 'first_name', 'last_name', and 'ramq'. Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object."
                 response = anthropic_mm_llm.complete(
                     prompt=prompt,
                     image_documents=image_documents,
@@ -78,7 +83,7 @@ def get_ramq(input_data, is_image=True):
 
     else:
         # Process free text input
-        prompt = f"From this text locate and extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. Extract the person's first name, last name, date of birth, and RAMQ number. Output as JSON with keys: 'first_name', 'last_name', 'date_of_birth' (in %Y-%m-%d format), and 'ramq'. Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object. Here is the text: {input_data}"
+        prompt = f"From this text locate and extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. First name starts with the 4th letter of the RAMQ AND Should be a name! Extract the person's first name, last name, date of birth, and RAMQ number. Output as JSON with keys: 'first_name', 'last_name', and 'ramq'. Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object. Here is the text: {input_data}"
         response = anthropic_mm_llm.complete(
             prompt=prompt,
             image_documents=None,
@@ -87,33 +92,55 @@ def get_ramq(input_data, is_image=True):
     # Parse the JSON response
     import json
     data = json.loads(response.text)
-    # Extract date of birth
-    dob_str = data["date_of_birth"]
+
+    # Extract and validate date of birth from RAMQ
+    ramq = data["ramq"]
+    year = int(ramq[4:6])
+    month = int(ramq[6:8])
+    day = int(ramq[8:10])
+
+    # Adjust year for century and ensure it is <= current year
+    current_year = datetime.now().year
+    if year > 50:
+        year += 1900
+    else:
+        year += 2000
+
+    if year > current_year:
+        year -= 100
+
+    # Adjust month for gender
+    gender = None
+    gender_digit = int(ramq[6])
+    if gender_digit in [5, 6]:
+        gender = "female"
+        month -= 50
+    elif gender_digit in [0, 1]:
+        gender = "male"
+
+    dob_str = f"{year}-{month:02d}-{day:02d}"
     
     # Validate dob
     try:
-        dob = datetime.strptime(dob_str, "%Y-%m-%d").date()
+        dob = datetime.strptime(dob_str, "%Y-%m-%d")
     except ValueError:
         raise ValueError(f"Unsupported date format: {dob_str}")
-
-    # Extract gender based on RAMQ
-    gender = None
-    if "ramq" in data:
-        gender_digit = int(data["ramq"][6])
-        if gender_digit in [5, 6]:
-            gender = "female"
-        elif gender_digit in [0, 1]:
-            gender = "male"
 
     person_info = PersonInfo(
         first_name=data["first_name"],
         last_name=data["last_name"],
-        date_of_birth=dob_str,
+        date_of_birth=dob,
         gender=gender,
         ramq=data["ramq"]
     )
 
-    return person_info.ramq, person_info.last_name, person_info.first_name, person_info.date_of_birth, person_info.gender
+    return (
+        person_info.ramq,
+        person_info.last_name,
+        person_info.first_name,
+        person_info.date_of_birth,
+        person_info.gender,
+    )
 
 def get_patient_list(input_data: str, is_image: bool = True, additional_prompt: str = ""):
     base_prompt = "Extract a list of patients from the image or text. For each patient, provide their first name and last name. If available, also include their patient number and room number. Output as JSON with a 'patients' key containing a list of patient objects. Each patient object should have keys: first_name, last_name, and optionally patient_number and room_number. "
