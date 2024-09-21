@@ -122,7 +122,7 @@ def get_ramq(input_data, is_image=True):
     
     # Validate dob
     try:
-        dob = datetime.strptime(dob_str, "%Y-%m-%d").date()
+        dob = datetime.strptime(dob_str, "%Y-%m-%d")
     except ValueError:
         raise ValueError(f"Unsupported date format: {dob_str}")
 
