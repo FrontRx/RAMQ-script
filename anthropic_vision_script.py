@@ -54,15 +54,61 @@ anthropic_mm_llm = AnthropicMultiModal(
     anthropic_api_key=anthropic_api_key,
 )
 
-def validate_ramq(ramq: str) -> tuple[bool, str]:
-    # Basic format validation
+
+def validate_ramq(ramq: str) -> bool:
+    # Character to decimal value mapping
+    char_to_decimal = {
+        "A": 193,
+        "B": 194,
+        "C": 195,
+        "D": 196,
+        "E": 197,
+        "F": 198,
+        "G": 199,
+        "H": 200,
+        "I": 201,
+        "J": 209,
+        "K": 210,
+        "L": 211,
+        "M": 212,
+        "N": 213,
+        "O": 214,
+        "P": 215,
+        "Q": 216,
+        "R": 217,
+        "S": 226,
+        "T": 227,
+        "U": 228,
+        "V": 229,
+        "W": 230,
+        "X": 231,
+        "Y": 232,
+        "Z": 233,
+        "0": 240,
+        "1": 241,
+        "2": 242,
+        "3": 243,
+        "4": 244,
+        "5": 245,
+        "6": 246,
+        "7": 247,
+        "8": 248,
+        "9": 249,
+    }
+
+    # Updated multipliers for all 14 characters before the check digit
+    # Based on the example provided (NOMI-AAAA-SxMM-JJ-S gives 14 chars):
+    multipliers = [1, 3, 7, 9, 1, 7, 1, 3, 4, 5, 7, 6, 9, 1]
+
+    def calculate_check_digit(nam_decomposed: str) -> int:
+        total = 0
+        for char, mult in zip(nam_decomposed, multipliers):
+            total += char_to_decimal[char] * mult
+        return total % 10
+
     if len(ramq) != 12:
-        return False, "Invalid length"
-    
-    # 1. Validate first 4 characters are alphabetic
-    if not ramq[:4].isalpha():
-        return False, "First 4 characters must be alphabetic"
-    
+        return False
+
     # Extract components
     name = ramq[:4]
     year = ramq[4:6]
@@ -71,77 +117,45 @@ def validate_ramq(ramq: str) -> tuple[bool, str]:
     sequence = ramq[10]
     check_digit = int(ramq[11])
 
-    # Character to decimal value mapping
-    char_to_decimal = {
-        'A': 193, 'B': 194, 'C': 195, 'D': 196, 'E': 197, 'F': 198,
-        'G': 199, 'H': 200, 'I': 201, 'J': 209, 'K': 210, 'L': 211,
-        'M': 212, 'N': 213, 'O': 214, 'P': 215, 'Q': 216, 'R': 217,
-        'S': 226, 'T': 227, 'U': 228, 'V': 229, 'W': 230, 'X': 231,
-        'Y': 232, 'Z': 233,
-        '0': 240, '1': 241, '2': 242, '3': 243, '4': 244,
-        '5': 245, '6': 246, '7': 247, '8': 248, '9': 249
-    }
-
-    # 2. Validate birth date is numeric and valid
-    try:
-        month_num = int(month)
-        original_month = month_num
-        
-        # Determine gender and adjust month if needed
-        if month_num > 50:
-            month_num -= 50
-            sex = 'F'
-        else:
-            sex = 'M'
-            
-        if not (1 <= month_num <= 12):
-            return False, "Invalid month"
-            
-        day_num = int(day)
-        if not (1 <= day_num <= 31):
-            return False, "Invalid day"
-            
-        # Determine century and create full year
-        current_year = datetime.now().year % 100
-        if int(year) <= current_year:
-            full_year = f"20{year}"
-        else:
-            full_year = f"19{year}"
-            
-        # Validate complete date
-        datetime(int(full_year), month_num, day_num)
-    except ValueError:
-        return False, "Invalid date"
-
-    # Create decomposed RAMQ for validation
-    # Format: NOMI-YYYY-SxMM-DDx-S
-    decomposed = f"{name}-{full_year}-{sex}{month_num:02d}-{day}{sequence}"
-    
-    # Multipliers for validation (matching the example)
-    multipliers = [1,3,7,9, 1,7,1,3, 4,5,7, 6,9,1]
-    
-    # Calculate check digit
-    total = 0
-    validation_string = name + full_year + sex + f"{month_num:02d}" + day + sequence
-    
-    for char, mult in zip(validation_string, multipliers):
-        decimal_value = char_to_decimal[char]
-        total += decimal_value * mult
-    
-    calculated_check = total % 10
-    
-    # If validation fails with current century, try previous century
-    if calculated_check != check_digit and full_year.startswith('20'):
+    # Determine full year
+    current_year = datetime.now().year
+    if int(year) > 50:
         full_year = f"19{year}"
-        validation_string = name + full_year + sex + f"{month_num:02d}" + day + sequence
-        total = 0
-        for char, mult in zip(validation_string, multipliers):
-            decimal_value = char_to_decimal[char]
-            total += decimal_value * mult
-        calculated_check = total % 10
-    
-    is_valid = calculated_check == check_digit
-    return is_valid, decomposed
+    else:
+        full_year = f"20{year}"
+    if int(full_year) > current_year:
+        # If year surpasses current year, subtract a century
+        full_year = str(int(full_year) - 100)
+
+    # Adjust month and determine sex
+    month_num = int(month)
+    if month_num > 50:
+        month_num -= 50
+        sex = "F"
+    else:
+        sex = "M"
+
+    # Construct the full string for validation (no check digit at this point)
+    nam_decomposed = (
+        name  # NOMI (4 chars)
+        + full_year  # AAAA (4 chars)
+        + sex  # Sx (1 char for sex)
+        + f"{month_num:02d}"  # MM (2 chars)
+        + day  # JJ (2 chars)
+        + sequence  # S (1 char)
+    )
+
+    # Calculate check digit with current assumption
+    calculated_check = calculate_check_digit(nam_decomposed)
+
+    # If check fails, try previous century if we haven't already
+    if calculated_check != check_digit and full_year.startswith("20"):
+        full_year = str(int(full_year) - 100)
+        nam_decomposed = name + full_year + sex + f"{month_num:02d}" + day + sequence
+        calculated_check = calculate_check_digit(nam_decomposed)
+
+    return calculated_check == check_digit
+
 
 def get_ramq(input_data, is_image=True):
     if is_image:
@@ -221,7 +235,7 @@ def get_ramq(input_data, is_image=True):
         ramq=data["ramq"]
     )
 
-    is_valid, decomposed = validate_ramq(data["ramq"])
+    is_valid = validate_ramq(data["ramq"])
 
     return (
         person_info.ramq,
@@ -229,8 +243,7 @@ def get_ramq(input_data, is_image=True):
         person_info.first_name,
         person_info.date_of_birth,
         person_info.gender,
-        is_valid,
-        decomposed
+        is_valid
     )
 
 def get_patient_list(input_data: str, is_image: bool = True, additional_prompt: str = ""):
