@@ -53,10 +53,99 @@ anthropic_mm_llm = AnthropicMultiModal(
     model="claude-3-opus-20240229",
     anthropic_api_key=anthropic_api_key,
 )
+
+def validate_ramq(ramq: str) -> tuple[bool, str]:
+    # Basic format validation
+    if len(ramq) != 12:
+        return False, "Invalid length"
+    
+    # 1. Validate first 4 characters are alphabetic
+    if not ramq[:4].isalpha():
+        return False, "First 4 characters must be alphabetic"
+    
+    # Extract components
+    name = ramq[:4]
+    year = ramq[4:6]
+    month = ramq[6:8]
+    day = ramq[8:10]
+    sequence = ramq[10]
+    check_digit = int(ramq[11])
+
+    # Character to decimal value mapping
+    char_to_decimal = {
+        'A': 193, 'B': 194, 'C': 195, 'D': 196, 'E': 197, 'F': 198,
+        'G': 199, 'H': 200, 'I': 201, 'J': 209, 'K': 210, 'L': 211,
+        'M': 212, 'N': 213, 'O': 214, 'P': 215, 'Q': 216, 'R': 217,
+        'S': 226, 'T': 227, 'U': 228, 'V': 229, 'W': 230, 'X': 231,
+        'Y': 232, 'Z': 233,
+        '0': 240, '1': 241, '2': 242, '3': 243, '4': 244,
+        '5': 245, '6': 246, '7': 247, '8': 248, '9': 249
+    }
+
+    # 2. Validate birth date is numeric and valid
+    try:
+        month_num = int(month)
+        original_month = month_num
+        
+        # Determine gender and adjust month if needed
+        if month_num > 50:
+            month_num -= 50
+            sex = 'F'
+        else:
+            sex = 'M'
+            
+        if not (1 <= month_num <= 12):
+            return False, "Invalid month"
+            
+        day_num = int(day)
+        if not (1 <= day_num <= 31):
+            return False, "Invalid day"
+            
+        # Determine century and create full year
+        current_year = datetime.now().year % 100
+        if int(year) <= current_year:
+            full_year = f"20{year}"
+        else:
+            full_year = f"19{year}"
+            
+        # Validate complete date
+        datetime(int(full_year), month_num, day_num)
+    except ValueError:
+        return False, "Invalid date"
+
+    # Create decomposed RAMQ for validation
+    # Format: NOMI-YYYY-SxMM-DDx-S
+    decomposed = f"{name}-{full_year}-{sex}{month_num:02d}-{day}{sequence}"
+    
+    # Multipliers for validation (matching the example)
+    multipliers = [1,3,7,9, 1,7,1,3, 4,5,7, 6,9,1]
+    
+    # Calculate check digit
+    total = 0
+    validation_string = name + full_year + sex + f"{month_num:02d}" + day + sequence
+    
+    for char, mult in zip(validation_string, multipliers):
+        decimal_value = char_to_decimal[char]
+        total += decimal_value * mult
+    
+    calculated_check = total % 10
+    
+    # If validation fails with current century, try previous century
+    if calculated_check != check_digit and full_year.startswith('20'):
+        full_year = f"19{year}"
+        validation_string = name + full_year + sex + f"{month_num:02d}" + day + sequence
+        total = 0
+        for char, mult in zip(validation_string, multipliers):
+            decimal_value = char_to_decimal[char]
+            total += decimal_value * mult
+        calculated_check = total % 10
+    
+    is_valid = calculated_check == check_digit
+    return is_valid, decomposed
+
 def get_ramq(input_data, is_image=True):
     if is_image:
         # Load image documents from URLs
-
         try:
             # Download the image from the URL
             response = requests.get(input_data)
@@ -80,9 +169,7 @@ def get_ramq(input_data, is_image=True):
                 )
         except Exception as e:
             raise ValueError(f"Error loading image: {str(e)}")
-
     else:
-        # Process free text input
         prompt = f"From this text locate and extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. First name starts with the 4th letter of the RAMQ AND Should be a name! Extract the person's first name, last name, date of birth, and RAMQ number. Output as JSON with keys: 'first_name', 'last_name', and 'ramq'. Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object. Here is the text: {input_data}"
         response = anthropic_mm_llm.complete(
             prompt=prompt,
@@ -134,12 +221,16 @@ def get_ramq(input_data, is_image=True):
         ramq=data["ramq"]
     )
 
+    is_valid, decomposed = validate_ramq(data["ramq"])
+
     return (
         person_info.ramq,
         person_info.last_name,
         person_info.first_name,
         person_info.date_of_birth,
         person_info.gender,
+        is_valid,
+        decomposed
     )
 
 def get_patient_list(input_data: str, is_image: bool = True, additional_prompt: str = ""):
