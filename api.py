@@ -43,7 +43,7 @@ def extract_json_from_image():
         return "", 500
 
 
-@app.route('/validate', methods=['GET'])
+@app.route('/validate_ramq', methods=['GET'])
 def validate_ramq_endpoint():
     ramq = request.args.get('ramq')
     if ramq is None:
