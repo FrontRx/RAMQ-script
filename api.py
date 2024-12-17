@@ -1,6 +1,6 @@
 import os
 from flask import Flask,jsonify,request
-from anthropic_vision_script import get_ramq
+from anthropic_vision_script import get_ramq, validate_ramq
 
 app = Flask(__name__)
 
@@ -29,7 +29,7 @@ def extract_json_from_image():
         input_data = image_url
 
     try:
-        ramq, last_name, first_name, dob, gender = get_ramq(input_data, is_image)
+        ramq, last_name, first_name, dob, gender, _ = get_ramq(input_data, is_image)
         return jsonify({
             "ramq": ramq,
             "last_name":last_name,
@@ -41,6 +41,19 @@ def extract_json_from_image():
     except ValueError as e:
         print(e, flush=True)
         return "", 500
+
+
+@app.route('/validate_ramq', methods=['GET'])
+def validate_ramq_endpoint():
+    ramq = request.args.get('ramq')
+    if ramq is None:
+        return jsonify({"error": "Missing ramq query parameter"}), 400
+    try:
+        is_valid = validate_ramq(ramq)
+        return jsonify({"valid": is_valid})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, port = 9000)
