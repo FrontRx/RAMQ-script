@@ -44,7 +44,7 @@ def extract_json_from_image():
 
 
 @app.route('/validate_ramq', methods=['GET'])
-def validate_ramq_endpoint():
+def ramq_validation():
     ramq = request.args.get('ramq')
     if ramq is None:
         return jsonify({"error": "Missing ramq query parameter"}), 400
