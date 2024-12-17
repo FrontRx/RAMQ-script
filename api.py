@@ -28,14 +28,14 @@ def extract_json_from_image():
         input_data = image_url
 
     try:
-        ramq, last_name, first_name, dob, gender, valid = get_ramq(input_data, is_image)
+        ramq, last_name, first_name, dob, gender, valid_ramq = get_ramq(input_data, is_image)
         return jsonify({
             "ramq": ramq,
             "last_name":last_name,
             "first_name":first_name,
             "dob": dob.strftime("%Y-%m-%d"),
             "gender": gender,
-            "valid": valid
+            "valid_ramq": valid_ramq
         })
 
     except ValueError as e:
@@ -49,8 +49,8 @@ def ramq_validation():
     if ramq is None:
         return jsonify({"error": "Missing ramq query parameter"}), 400
     try:
-        is_valid = validate_ramq(ramq)
-        return jsonify({"valid": is_valid})
+        valid_ramq = validate_ramq(ramq)
+        return jsonify({"valid": valid_ramq})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
