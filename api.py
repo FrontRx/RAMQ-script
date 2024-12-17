@@ -6,6 +6,8 @@ app = Flask(__name__)
 
 @app.before_request
 def check_token():
+    if request.path == "/":
+        return
     token = request.headers.get('RAMQ-Billr-API-Key')
     headerToken = os.environ.get('HEADER_TOKEN')
     if token is None or token != headerToken:
