@@ -221,17 +221,41 @@ def get_ramq(input_data, is_image=True):
     # Adjust month for gender
     gender = None
     gender_digit = int(ramq[6])
-    if gender_digit in [5, 6]:
-        gender = "female"
-        month -= 50
-    elif gender_digit in [0, 1]:
+
+    if gender_digit in [0, 1]:
         gender = "male"
+    else:
+        gender = 'female'
+        month -= 50
 
-    dob = datetime(year, month, day)
-    is_valid = validate_ramq(ramq)
 
-    return ramq, data["last_name"], data["first_name"], dob, gender, is_valid
+    dob_str = f"{year}-{month:02d}-{day:02d}"
 
+    # Validate dob
+    try:
+        dob = datetime.strptime(dob_str, "%Y-%m-%d")
+    except ValueError:
+        print(f"Unsupported date format: {dob_str}")
+        dob = datetime.now()
+
+    person_info = PersonInfo(
+        first_name=data["first_name"],
+        last_name=data["last_name"],
+        date_of_birth=dob,
+        gender=gender,
+        ramq=data["ramq"]
+    )
+
+    is_valid = validate_ramq(data["ramq"])
+
+    return (
+        person_info.ramq,
+        person_info.last_name,
+        person_info.first_name,
+        person_info.date_of_birth,
+        person_info.gender,
+        is_valid
+    )
 def get_patient_list(input_data: str, is_image: bool = True, additional_prompt: str = ""):
     base_prompt = "Extract a list of patients from the image or text. For each patient, provide their first name and last name. If available, also include their patient number and room number. Output as JSON with a 'patients' key containing a list of patient objects. Each patient object should have keys: first_name, last_name, and optionally patient_number and room_number. "
     prompt = base_prompt + additional_prompt
