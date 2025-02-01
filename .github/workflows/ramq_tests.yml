@@ -5,12 +5,11 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-    types: [opened, synchronize, reopened, closed]
+    types: [opened, synchronize, reopened]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true || github.event_name == 'push'
 
     steps:
     - uses: actions/checkout@v2
