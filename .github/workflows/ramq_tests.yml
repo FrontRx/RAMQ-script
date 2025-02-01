@@ -19,10 +19,19 @@ jobs:
       with:
         python-version: '3.12'
 
-    - name: Install dependencies
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake python3-dev
+
+    - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install wheel setuptools
+        # Install llama-cpp-python with specific options for Linux
+        CMAKE_ARGS="-DLLAMA_CUBLAS=OFF" pip install llama-cpp-python --no-cache-dir
+        # Install other requirements
+        pip install -r requirements.txt --no-cache-dir
         pip install pytest pytest-cov
 
     - name: Run tests
