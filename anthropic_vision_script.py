@@ -225,12 +225,14 @@ def get_ramq(input_data, is_image=True):
     # Adjust month for gender
     gender = None
     gender_digit = int(ramq[6])
-    if gender_digit in [5, 6]:
-        gender = "female"
-        month -= 50
-    elif gender_digit in [0, 1]:
+    if gender_digit in [0, 1]:
         gender = "male"
+    else:
+        gender = 'female'
+        month -= 50
 
+    print(year, month, day)
+    print(gender)
     dob_str = f"{year}-{month:02d}-{day:02d}"
 
     # Validate dob
