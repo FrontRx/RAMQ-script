@@ -1,8 +1,5 @@
 anthropic==0.45.2
-llama-index==0.10.20
-llama-index-core==0.10.20
-llama-index-multi-modal-llms==0.1.4
-llama-index-multi-modal-llms-anthropic==0.1.4
+httpx==0.25.1
 pydantic==2.6.3
 python-dotenv==1.0.1
 pytest==8.0.2
