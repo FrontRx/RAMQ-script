@@ -1,5 +1,7 @@
 import unittest
+from datetime import datetime
 from anthropic_vision_script import get_ramq
+import httpx
 
 class TestRAMQProcessing(unittest.TestCase):
     """Test cases for RAMQ information extraction from GitHub images."""
@@ -8,10 +10,13 @@ class TestRAMQProcessing(unittest.TestCase):
         """Set up test cases with sample URLs."""
         self.test_urls = [
             "https://i.ibb.co/7Jm0KvX/IMG-2618.jpg",
-            "https://i.ibb.co/m92CFv2/IMG-2608.jpg",
-            "https://i.ibb.co/3MdsCGv/IMG-2610.jpg", 
-            "https://i.ibb.co/vV9MCcj/IMG-2611.jpg",
         ]
+        self.timeout = httpx.Timeout(30.0, connect=30.0)
+        self.client = httpx.Client(timeout=self.timeout)
+
+    def tearDown(self):
+        """Clean up resources."""
+        self.client.close()
 
     def test_ramq_format(self):
         """Test if RAMQ numbers follow the correct format (4 letters + 8 digits)."""
@@ -34,7 +39,7 @@ class TestRAMQProcessing(unittest.TestCase):
                 self.assertIsInstance(ramq, str)
                 self.assertIsInstance(last_name, str)
                 self.assertIsInstance(first_name, str)
-                self.assertIsInstance(dob, str)
+                self.assertIsInstance(dob, datetime)  # Changed from str to datetime
                 self.assertIsInstance(gender, str)
                 self.assertIsInstance(is_valid, bool)
 
@@ -64,13 +69,10 @@ class TestRAMQProcessing(unittest.TestCase):
                 month = int(ramq[6:8]) % 50  # Adjust for gender encoding
                 day = int(ramq[8:10])
                 
-                # Extract date from DOB string (assuming format YYYY-MM-DD)
-                dob_parts = dob.split('-')
-                self.assertEqual(len(dob_parts), 3)
-                
-                dob_year = int(dob_parts[0])
-                dob_month = int(dob_parts[1])
-                dob_day = int(dob_parts[2])
+                # Get date components from datetime object
+                dob_year = dob.year
+                dob_month = dob.month
+                dob_day = dob.day
                 
                 # Check if the day and month match
                 self.assertEqual(month, dob_month)

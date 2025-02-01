@@ -14,6 +14,8 @@ from typing import List
 load_dotenv()
 anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
 
+# Configure httpx client with timeouts
+http_client = httpx.Client(timeout=httpx.Timeout(30.0, connect=30.0))
 
 class PersonInfo(BaseModel):
     first_name: str
@@ -141,14 +143,10 @@ def validate_ramq(ramq: str) -> bool:
     return calculated_check == check_digit
 
 def get_ramq(input_data, is_image=True):
-    import anthropic
-    import base64
-    import httpx
-
     if is_image:
         try:
             # Download image and convert to base64
-            image_response = httpx.get(input_data)
+            image_response = http_client.get(input_data)
             image_data = base64.standard_b64encode(image_response.content).decode("utf-8")
 
             # Determine media type based on content
@@ -199,9 +197,7 @@ def get_ramq(input_data, is_image=True):
         )
         response = message.content[0].text
 
-
     # Parse the JSON response
-    import json
     data = json.loads(response)
 
     # Extract and validate date of birth from RAMQ
@@ -225,40 +221,17 @@ def get_ramq(input_data, is_image=True):
     # Adjust month for gender
     gender = None
     gender_digit = int(ramq[6])
-    if gender_digit in [0, 1]:
-        gender = "male"
-    else:
-        gender = 'female'
+    if gender_digit in [5, 6]:
+        gender = "female"
         month -= 50
+    elif gender_digit in [0, 1]:
+        gender = "male"
 
-    print(year, month, day)
-    print(gender)
-    dob_str = f"{year}-{month:02d}-{day:02d}"
+    dob = datetime(year, month, day)
+    is_valid = validate_ramq(ramq)
 
-    # Validate dob
-    try:
-        dob = datetime.strptime(dob_str, "%Y-%m-%d")
-    except ValueError:
-        raise ValueError(f"Unsupported date format: {dob_str}")
+    return ramq, data["last_name"], data["first_name"], dob, gender, is_valid
 
-    person_info = PersonInfo(
-        first_name=data["first_name"],
-        last_name=data["last_name"],
-        date_of_birth=dob,
-        gender=gender,
-        ramq=data["ramq"]
-    )
-
-    is_valid = validate_ramq(data["ramq"])
-
-    return (
-        person_info.ramq,
-        person_info.last_name,
-        person_info.first_name,
-        person_info.date_of_birth,
-        person_info.gender,
-        is_valid
-    )
 def get_patient_list(input_data: str, is_image: bool = True, additional_prompt: str = ""):
     base_prompt = "Extract a list of patients from the image or text. For each patient, provide their first name and last name. If available, also include their patient number and room number. Output as JSON with a 'patients' key containing a list of patient objects. Each patient object should have keys: first_name, last_name, and optionally patient_number and room_number. "
     prompt = base_prompt + additional_prompt
