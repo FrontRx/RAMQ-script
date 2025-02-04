@@ -335,7 +335,7 @@ def get_patient_list(input_data: str, is_image: bool = True, additional_prompt: 
             # Extract JSON from the response if it's embedded in text
             start_idx = cleaned_response.find('{')
             end_idx = cleaned_response.rfind('}') + 1
-            if start_idx != -1 and end_idx != 0:
+            if (start_idx != -1 and end_idx != 0):
                 cleaned_response = cleaned_response[start_idx:end_idx]
             else:
                 raise ValueError("No valid JSON found in response")
