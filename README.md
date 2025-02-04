@@ -40,6 +40,7 @@ The script will print the following details:
 - First Name
 - Date of Birth
 - Gender
+- Is RAMQ vlaid (true or false)
 
 ## Deployment as REST API
 
