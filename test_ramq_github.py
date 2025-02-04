@@ -1,7 +1,9 @@
 import unittest
 from datetime import datetime
-from anthropic_vision_script import get_ramq
+from anthropic_vision_script import get_ramq, resize_image
 import httpx
+from io import BytesIO
+from PIL import Image
 
 class TestRAMQProcessing(unittest.TestCase):
     """Test cases for RAMQ information extraction from GitHub images."""
@@ -90,6 +92,18 @@ class TestRAMQProcessing(unittest.TestCase):
                     # If the date is invalid, the test should pass without assertions
                     # This is because get_ramq() will return current datetime for invalid dates
                     pass
+
+    def test_image_resizing(self):
+        """Test if images are resized to be under 5 MB."""
+        for url in self.test_urls:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                original_size = len(response.content)
+                resized_image_data = resize_image(response.content)
+                resized_size = len(resized_image_data)
+                
+                self.assertLessEqual(resized_size, 5 * 1024 * 1024)
+                self.assertLessEqual(resized_size, original_size)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2) 
