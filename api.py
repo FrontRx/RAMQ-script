@@ -42,7 +42,7 @@ def extract_json_from_image():
 
     except ValueError as e:
         print(e, flush=True)
-        return "", 500
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/validate_ramq', methods=['GET'])
@@ -54,6 +54,7 @@ def ramq_validation():
         valid_ramq = validate_ramq(ramq)
         return jsonify({"valid": valid_ramq})
     except Exception as e:
+        print(e, flush=True)
         return jsonify({"error": str(e)}), 500
 
 
