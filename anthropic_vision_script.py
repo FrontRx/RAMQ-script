@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field
 from PIL import Image  # Importing PIL library for image resizing
+from io import BytesIO  # Importing BytesIO from io
 
 from dotenv import load_dotenv
 import base64
