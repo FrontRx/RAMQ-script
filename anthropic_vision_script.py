@@ -3,6 +3,8 @@ import re
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field
+from PIL import Image  # Importing PIL library for image resizing
+from io import BytesIO  # Importing BytesIO from io
 
 from dotenv import load_dotenv
 import base64
@@ -142,12 +144,30 @@ def validate_ramq(ramq: str) -> bool:
 
     return calculated_check == check_digit
 
+def resize_image(image_data: bytes, max_size_mb: float = 5.0) -> bytes:
+    image = Image.open(BytesIO(image_data))
+    while len(image_data) > max_size_mb * 1024 * 1024:
+        width, height = image.size
+        new_width = int(width * 0.9)
+        new_height = int(height * 0.9)
+        image = image.resize((new_width, new_height), Image.ANTIALIAS)
+        buffer = BytesIO()
+        image.save(buffer, format="JPEG")
+        image_data = buffer.getvalue()
+    return image_data
+
 def get_ramq(input_data, is_image=True):
     if is_image:
         try:
             # Download image and convert to base64
             image_response = http_client.get(input_data)
-            image_data = base64.standard_b64encode(image_response.content).decode("utf-8")
+            image_data = image_response.content
+
+            # Resize image if it exceeds 5 MB
+            if len(image_data) > 5 * 1024 * 1024:
+                image_data = resize_image(image_data)
+
+            image_data = base64.standard_b64encode(image_data).decode("utf-8")
 
             # Determine media type based on content
             content_type = image_response.headers.get('content-type', 'image/jpeg')
@@ -316,7 +336,7 @@ def get_patient_list(input_data: str, is_image: bool = True, additional_prompt: 
             # Extract JSON from the response if it's embedded in text
             start_idx = cleaned_response.find('{')
             end_idx = cleaned_response.rfind('}') + 1
-            if start_idx != -1 and end_idx != 0:
+            if (start_idx != -1 and end_idx != 0):
                 cleaned_response = cleaned_response[start_idx:end_idx]
             else:
                 raise ValueError("No valid JSON found in response")
