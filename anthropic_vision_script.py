@@ -29,7 +29,7 @@ class PersonInfo(BaseModel):
         pattern=r"^[A-Z]{4}\d{8}$",
         description="RAMQ number should have 4 letters followed by 8 digits",
     )
-    mrn: Optional[str] = Field(None, description="Medical Record Number (MRN) can contain digits or alphanumeric characters")
+    mrn: Optional[str] = Field(None, description="Medical Record Number (MRN) can contain digits or alphanumeric characters. If MRN is not present, return None.")
 
 
 class PatientInfo(BaseModel):
@@ -204,7 +204,7 @@ def get_ramq(input_data, is_image=True):
         except Exception as e:
             raise ValueError(f"Error processing image: {str(e)}")
     else:
-        prompt = f"From this text locate and extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. First name starts with the 4th letter of the RAMQ AND Should be a name! Extract the person's first name, last name, and RAMQ number. For the date of birth, convert any 2-digit year to a 4-digit year (if year > 50, add 1900, else add 2000). Format the date as YYYY-MM-DD and double check that the date is valid (i.e. DD is <= 31, YYYY < current year and MM <= 12). Output as JSON with keys: 'first_name', 'last_name', 'ramq', and 'date_of_birth'. Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object. Here is the text: {input_data}"
+        prompt = f"From this text locate and extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. First name starts with the 4th letter of the RAMQ AND Should be a name! Extract the person's first name, last name, and RAMQ number. For the date of birth, convert any 2-digit year to a 4-digit year (if year > 50, add 1900, else add 2000). Format the date as YYYY-MM-DD and double check that the date is valid (i.e. DD is <= 31, YYYY < current year and MM <= 12). Output as JSON with keys: 'first_name', 'last_name', 'ramq', 'mrn', 'date_of_birth'. Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object. Here is the text: {input_data}"
 
         message = anthropic.Anthropic().messages.create(
             model="claude-3-5-sonnet-20241022",
