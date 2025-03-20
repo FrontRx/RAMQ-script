@@ -29,6 +29,7 @@ class PersonInfo(BaseModel):
         pattern=r"^[A-Z]{4}\d{8}$",
         description="RAMQ number should have 4 letters followed by 8 digits",
     )
+    mrn: Optional[str] = Field(None, description="Medical Record Number (MRN) can contain digits or alphanumeric characters")
 
 
 class PatientInfo(BaseModel):
@@ -172,7 +173,7 @@ def get_ramq(input_data, is_image=True):
             # Determine media type based on content
             content_type = image_response.headers.get('content-type', 'image/jpeg')
 
-            prompt = "Perform OCR. Extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. First name starts with the 4th letter of the RAMQ AND Should be a name! Extract the person's first name, last name, date of birth, and RAMQ number. Output as JSON with keys: 'first_name', 'last_name', and 'ramq'. Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object."
+            prompt = "Perform OCR. Extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. First name starts with the 4th letter of the RAMQ AND Should be a name! Extract the person's first name, last name, date of birth, and RAMQ number. Output as JSON with keys: 'first_name', 'last_name', and 'ramq'. Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Also extract the MRN number if it is present in the image. Output as JSON with keys: 'first_name', 'last_name', 'ramq', and 'mrn'. Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object."
 
             message = anthropic.Anthropic().messages.create(
                 model="claude-3-5-sonnet-20241022",
@@ -263,7 +264,8 @@ def get_ramq(input_data, is_image=True):
         last_name=data["last_name"],
         date_of_birth=dob,
         gender=gender,
-        ramq=data["ramq"]
+        ramq=data["ramq"],
+        mrn=data.get("mrn")
     )
 
     is_valid = validate_ramq(data["ramq"])
@@ -274,7 +276,8 @@ def get_ramq(input_data, is_image=True):
         person_info.first_name,
         person_info.date_of_birth,
         person_info.gender,
-        is_valid
+        is_valid,
+        person_info.mrn
     )
 def get_patient_list(input_data: str, is_image: bool = True, additional_prompt: str = ""):
     base_prompt = "Extract a list of patients from the image or text. For each patient, provide their first name and last name. If available, also include their patient number and room number. Output as JSON with a 'patients' key containing a list of patient objects. Each patient object should have keys: first_name, last_name, and optionally patient_number and room_number. "
