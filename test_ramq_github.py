@@ -11,7 +11,9 @@ class TestRAMQProcessing(unittest.TestCase):
     def setUp(self):
         """Set up test cases with sample URLs."""
         self.test_urls = [
-            "https://i.ibb.co/7Jm0KvX/IMG-2618.jpg",
+            "https://i.ibb.co/m92CFv2/IMG-2608.jpg",
+            "https://i.ibb.co/3MdsCGv/IMG-2610.jpg",
+            "https://i.ibb.co/vV9MCcj/IMG-2611.jpg",
         ]
         self.timeout = httpx.Timeout(30.0, connect=30.0)
         self.client = httpx.Client(timeout=self.timeout)
@@ -36,7 +38,7 @@ class TestRAMQProcessing(unittest.TestCase):
             with self.subTest(url=url):
                 result = get_ramq(url, is_image=True)
                 ramq, last_name, first_name, dob, gender, is_valid, mrn = result
-                
+
                 # Check types
                 self.assertIsInstance(ramq, str)
                 self.assertIsInstance(last_name, str)
@@ -51,7 +53,7 @@ class TestRAMQProcessing(unittest.TestCase):
             with self.subTest(url=url):
                 result = get_ramq(url, is_image=True)
                 ramq, _, _, _, gender, _ = result
-                
+
                 # Check if month indicates correct gender
                 month_digit = int(ramq[6])
                 if month_digit in [5, 6]:
@@ -65,27 +67,27 @@ class TestRAMQProcessing(unittest.TestCase):
             with self.subTest(url=url):
                 result = get_ramq(url, is_image=True)
                 ramq, _, _, dob, _, _ = result
-                
+
                 # Extract date components from RAMQ
                 year = int(ramq[4:6])
                 month = int(ramq[6:8]) % 50  # Adjust for gender encoding
                 day = int(ramq[8:10])
-                
+
                 # Check if the date would be valid
                 try:
                     # Try to create a datetime object with the extracted components
                     datetime(2000 + year if year <= 50 else 1900 + year, month, day)
-                    
+
                     # Only perform the assertions if the date is valid
                     # Get date components from datetime object
                     dob_year = dob.year
                     dob_month = dob.month
                     dob_day = dob.day
-                    
+
                     # Check if the day and month match
                     self.assertEqual(month, dob_month)
                     self.assertEqual(day, dob_day)
-                    
+
                     # Check if the year matches (considering century)
                     self.assertEqual(dob_year % 100, year)
                 except ValueError:
@@ -101,7 +103,7 @@ class TestRAMQProcessing(unittest.TestCase):
                 original_size = len(response.content)
                 resized_image_data = resize_image(response.content)
                 resized_size = len(resized_image_data)
-                
+
                 self.assertLessEqual(resized_size, 5 * 1024 * 1024)
                 self.assertLessEqual(resized_size, original_size)
 
