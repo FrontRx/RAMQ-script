@@ -15,6 +15,7 @@ from typing import List
 # Load environment variables from the .env file in the current directory
 load_dotenv()
 anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
+anthropic_model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
 
 # Configure httpx client with timeouts
 http_client = httpx.Client(timeout=httpx.Timeout(30.0, connect=30.0))
@@ -190,7 +191,7 @@ def get_ramq(input_data, is_image=True):
             message = anthropic.Anthropic(
                 timeout=httpx.Timeout(60.0, connect=30.0)
             ).messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model=anthropic_model,
                 max_tokens=1024,
                 messages=[
                     {
@@ -226,7 +227,7 @@ def get_ramq(input_data, is_image=True):
             message = anthropic.Anthropic(
                 timeout=httpx.Timeout(60.0, connect=30.0)
             ).messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model=anthropic_model,
                 max_tokens=1024,
                 messages=[
                     {
