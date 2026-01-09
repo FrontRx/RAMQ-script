@@ -168,12 +168,13 @@ def resize_image(image_data: bytes, max_size_mb: float = 5.0) -> bytes:
     return image_data
 
 
-def resize_image_percent(image_data: bytes, percent: int = 40) -> bytes:
+def resize_image_percent(image_data: bytes, percent: int = 40, min_width: int = 200) -> bytes:
     """Resize image to a percentage of original size.
 
     Args:
         image_data: Original image bytes
         percent: Target percentage (default 40% for optimal accuracy/size balance)
+        min_width: Minimum width in pixels (default 200px for OCR accuracy)
     """
     image = Image.open(BytesIO(image_data))
     original_format = image.format or 'JPEG'
@@ -181,6 +182,16 @@ def resize_image_percent(image_data: bytes, percent: int = 40) -> bytes:
 
     new_width = int(width * percent / 100)
     new_height = int(height * percent / 100)
+
+    # Ensure minimum width for OCR accuracy
+    if new_width < min_width:
+        ratio = min_width / new_width
+        new_width = min_width
+        new_height = int(new_height * ratio)
+
+    # Don't upscale - return original if target is larger
+    if new_width >= width:
+        return image_data
 
     image = image.resize((new_width, new_height), Image.LANCZOS)
 
