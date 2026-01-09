@@ -56,7 +56,7 @@ class TestRAMQProcessing(unittest.TestCase):
         for url in self.test_urls:
             with self.subTest(url=url):
                 result = get_ramq(url, is_image=True)
-                ramq, _, _, _, gender, _, _ = result
+                ramq, _, _, _, gender, _ = result
 
                 # Check if month indicates correct gender
                 month_digit = int(ramq[6])
@@ -70,7 +70,7 @@ class TestRAMQProcessing(unittest.TestCase):
         for url in self.test_urls:
             with self.subTest(url=url):
                 result = get_ramq(url, is_image=True)
-                ramq, _, _, dob, _, _, _ = result
+                ramq, _, _, dob, _, _ = result
 
                 # Extract date components from RAMQ
                 year = int(ramq[4:6])
