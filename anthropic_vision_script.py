@@ -223,12 +223,8 @@ def get_ramq(input_data, is_image=True):
             image_response = http_client.get(input_data)
             image_data = image_response.content
 
-            # Resize image to 60% for optimal accuracy/size/speed balance
-            image_data = resize_image_percent(image_data, percent=60)
-
-            # Resize further if still exceeds 5 MB
-            if len(image_data) > 5 * 1024 * 1024:
-                image_data = resize_image(image_data)
+            # Resize image to 40% for optimal accuracy/size/speed balance
+            image_data = resize_image_percent(image_data, percent=40)
 
             # Determine media type based on content
             content_type = image_response.headers.get('content-type', 'image/jpeg')
