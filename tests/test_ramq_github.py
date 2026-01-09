@@ -32,7 +32,7 @@ class TestRAMQProcessing(unittest.TestCase):
             with self.subTest(url=url):
                 result = get_ramq(url, is_image=True)
                 self.assertIsInstance(result, tuple)
-                self.assertEqual(len(result), 7)
+                self.assertEqual(len(result), 6)
                 ramq = result[0]
                 self.assertRegex(ramq, r'^[A-Z]{4}\d{8}$')
 
@@ -41,8 +41,8 @@ class TestRAMQProcessing(unittest.TestCase):
         for url in self.test_urls:
             with self.subTest(url=url):
                 result = get_ramq(url, is_image=True)
-                ramq, last_name, first_name, dob, gender, is_valid, mrn = result
-
+                ramq, last_name, first_name, dob, gender, is_valid = result
+                
                 # Check types
                 self.assertIsInstance(ramq, str)
                 self.assertIsInstance(last_name, str)
@@ -50,13 +50,13 @@ class TestRAMQProcessing(unittest.TestCase):
                 self.assertIsInstance(dob, datetime)  # Changed from str to datetime
                 self.assertIsInstance(gender, str)
                 self.assertIsInstance(is_valid, bool)
-                self.assertIsInstance(mrn, str)
+
     def test_gender_validation(self):
         """Test if gender is correctly extracted from RAMQ."""
         for url in self.test_urls:
             with self.subTest(url=url):
                 result = get_ramq(url, is_image=True)
-                ramq, _, _, _, gender, _, _ = result
+                ramq, _, _, _, gender, _ = result
 
                 # Check if month indicates correct gender
                 month_digit = int(ramq[6])
@@ -70,7 +70,7 @@ class TestRAMQProcessing(unittest.TestCase):
         for url in self.test_urls:
             with self.subTest(url=url):
                 result = get_ramq(url, is_image=True)
-                ramq, _, _, dob, _, _, _ = result
+                ramq, _, _, dob, _, _ = result
 
                 # Extract date components from RAMQ
                 year = int(ramq[4:6])
