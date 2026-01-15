@@ -9,16 +9,24 @@ from io import BytesIO  # Importing BytesIO from io
 from dotenv import load_dotenv
 import base64
 import json
-import anthropic
+from google import genai
+from google.genai import types
 import httpx
 from typing import List
+
 # Load environment variables from the .env file in the current directory
 load_dotenv()
-anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
-anthropic_model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
+gemini_api_key = os.environ.get("GEMINI_API_KEY")
 
 # Configure httpx client with timeouts
 http_client = httpx.Client(timeout=httpx.Timeout(30.0, connect=30.0))
+
+# Configure Gemini client
+gemini_client = genai.Client(api_key=gemini_api_key)
+
+# Model to use
+GEMINI_MODEL = "gemini-flash-latest"
+
 
 class PersonInfo(BaseModel):
     first_name: str
@@ -30,7 +38,7 @@ class PersonInfo(BaseModel):
         pattern=r"^[A-Z]{4}\d{8}$",
         description="RAMQ number should have 4 letters followed by 8 digits",
     )
-    mrn: Optional[str] = Field(None, description="Medical Record Number (MRN) can contain digits or alphanumeric characters. If MRN is not present, return None.")
+    mrn: Optional[str] = Field(None, description="Medical Record Number (MRN)")
 
 
 class PatientInfo(BaseModel):
@@ -84,7 +92,7 @@ def validate_ramq(ramq: str) -> bool:
         "8": 248,
         "9": 249,
     }
- 
+
 
     # Updated multipliers for all 14 characters before the check digit
     # Based on the example provided (NOMI-AAAA-SxMM-JJ-S gives 14 chars):
@@ -146,29 +154,78 @@ def validate_ramq(ramq: str) -> bool:
 
     return calculated_check == check_digit
 
+
 def resize_image(image_data: bytes, max_size_mb: float = 5.0) -> bytes:
-    try:
-        image = Image.open(BytesIO(image_data))
-        # Use Resampling.LANCZOS instead of deprecated ANTIALIAS
-        resampling_method = Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS
-        
+    image = Image.open(BytesIO(image_data))
+    while len(image_data) > max_size_mb * 1024 * 1024:
+        width, height = image.size
+        new_width = int(width * 0.9)
+        new_height = int(height * 0.9)
+        image = image.resize((new_width, new_height), Image.LANCZOS)
         buffer = BytesIO()
-        image_format = image.format or "JPEG"
-        
-        while len(image_data) > max_size_mb * 1024 * 1024:
-            width, height = image.size
-            new_width = int(width * 0.9)
-            new_height = int(height * 0.9)
-            image = image.resize((new_width, new_height), resampling_method)
-            buffer = BytesIO()
-            image.save(buffer, format=image_format)
-            image_data = buffer.getvalue()
-        
+        image.save(buffer, format="JPEG")
+        image_data = buffer.getvalue()
+    return image_data
+
+
+def resize_image_percent(image_data: bytes, percent: int = 40, min_width: int = 200) -> bytes:
+    """Resize image to a percentage of original size.
+
+    Args:
+        image_data: Original image bytes
+        percent: Target percentage (default 40% for optimal accuracy/size balance)
+        min_width: Minimum width in pixels (default 200px for OCR accuracy)
+    """
+    image = Image.open(BytesIO(image_data))
+    original_format = image.format or 'JPEG'
+    width, height = image.size
+
+    new_width = int(width * percent / 100)
+    new_height = int(height * percent / 100)
+
+    # Ensure minimum width for OCR accuracy
+    if new_width < min_width:
+        ratio = min_width / new_width
+        new_width = min_width
+        new_height = int(new_height * ratio)
+
+    # Don't upscale - return original if target is larger
+    if new_width >= width:
         return image_data
-    except Exception as e:
-        print(f"Error resizing image: {str(e)}")
-        # Return original image data if resizing fails
-        return image_data
+
+    image = image.resize((new_width, new_height), Image.LANCZOS)
+
+    buffer = BytesIO()
+    image.save(buffer, format=original_format, quality=85)
+    return buffer.getvalue()
+
+
+def resize_image_to_width(image_data: bytes, target_width: int, output_format: str = None) -> bytes:
+    """Resize image to a specific width while maintaining aspect ratio.
+
+    Args:
+        image_data: Original image bytes
+        target_width: Target width in pixels
+        output_format: Output format ('JPEG', 'PNG', etc). If None, preserves original format.
+    """
+    image = Image.open(BytesIO(image_data))
+    original_format = image.format or 'PNG'
+    width, height = image.size
+
+    # Calculate new height to maintain aspect ratio
+    ratio = target_width / width
+    new_height = int(height * ratio)
+
+    # Resize the image
+    image = image.resize((target_width, new_height), Image.LANCZOS)
+
+    # Determine output format
+    fmt = output_format or original_format
+
+    buffer = BytesIO()
+    image.save(buffer, format=fmt)
+    return buffer.getvalue()
+
 
 def get_ramq(input_data, is_image=True):
     if is_image:
@@ -177,98 +234,172 @@ def get_ramq(input_data, is_image=True):
             image_response = http_client.get(input_data)
             image_data = image_response.content
 
-            # Resize image if it exceeds 5 MB
-            if len(image_data) > 5 * 1024 * 1024:
-                image_data = resize_image(image_data)
-
-            image_data = base64.standard_b64encode(image_data).decode("utf-8")
+            # Resize image to 40% for optimal accuracy/size/speed balance
+            image_data = resize_image_percent(image_data, percent=40)
 
             # Determine media type based on content
             content_type = image_response.headers.get('content-type', 'image/jpeg')
 
-            prompt = "Perform OCR. Extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. First name starts with the 4th letter of the RAMQ AND Should be a name! Extract the person's first name, last name, date of birth, and RAMQ number. Output as JSON with keys: 'first_name', 'last_name', and 'ramq'. Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Also extract the MRN number if it is present in the image. Output as JSON with keys: 'first_name', 'last_name', 'ramq', and 'mrn'. Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object."
+            prompt = "Perform OCR. Extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. First name starts with the 4th letter of the RAMQ AND Should be a name! Extract the person's first name, last name, date of birth, and RAMQ number. Also extract the MRN (Medical Record Number) if present. Output as JSON with keys: 'first_name', 'last_name', 'ramq', and 'mrn' (null if not found). Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object."
 
-            message = anthropic.Anthropic(
-                timeout=httpx.Timeout(60.0, connect=30.0)
-            ).messages.create(
-                model=anthropic_model,
-                max_tokens=1024,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": prompt
-                            },
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": content_type,
-                                    "data": image_data,
-                                },
-                            }
-                        ],
-                    }
-                ],
+            # Build the content for Gemini
+            contents = [
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_bytes(data=image_data, mime_type=content_type),
+                        types.Part.from_text(text=prompt),
+                    ],
+                ),
+            ]
+
+            # Configure the generation
+            config = types.GenerateContentConfig(
+                response_mime_type="application/json",
             )
-            print(message)
-            response = message.content[0].text
-            print(response)
-        except httpx.TimeoutException as e:
-            raise ValueError(f"Timeout processing image: {str(e)}")
+
+            # Call Gemini API
+            message = gemini_client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=contents,
+                config=config,
+            )
+
+            response = message.text
         except Exception as e:
             raise ValueError(f"Error processing image: {str(e)}")
     else:
-        try:
-            prompt = f"From this text locate and extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. First name starts with the 4th letter of the RAMQ AND Should be a name! Extract the person's first name, last name, and RAMQ number. For the date of birth, convert any 2-digit year to a 4-digit year (if year > 50, add 1900, else add 2000). Format the date as YYYY-MM-DD and double check that the date is valid (i.e. DD is <= 31, YYYY < current year and MM <= 12). Output as JSON with keys: 'first_name', 'last_name', 'ramq', 'mrn', 'date_of_birth'. Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object. Here is the text: {input_data}"
+        prompt = f"From this text locate and extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. First name starts with the 4th letter of the RAMQ AND Should be a name! Extract the person's first name, last name, and RAMQ number. Also extract the MRN (Medical Record Number) if present. For the date of birth, convert any 2-digit year to a 4-digit year (if year > 50, add 1900, else add 2000). Format the date as YYYY-MM-DD and double check that the date is valid (i.e. DD is <= 31, YYYY < current year and MM <= 12). Output as JSON with keys: 'first_name', 'last_name', 'ramq', 'date_of_birth', and 'mrn' (null if not found). Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object. Here is the text: {input_data}"
 
-            message = anthropic.Anthropic(
-                timeout=httpx.Timeout(60.0, connect=30.0)
-            ).messages.create(
-                model=anthropic_model,
-                max_tokens=1024,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
+        # Build the content for Gemini
+        contents = [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(text=prompt),
                 ],
-            )
-            response = message.content[0].text
-        except httpx.TimeoutException as e:
-            raise ValueError(f"Timeout processing text: {str(e)}")
-        except Exception as e:
-            raise ValueError(f"Error processing text: {str(e)}")
+            ),
+        ]
+
+        # Configure the generation
+        config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+        )
+
+        # Call Gemini API
+        message = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=contents,
+            config=config,
+        )
+        response = message.text
 
     # Parse the JSON response
+    parsed = json.loads(response)
+    # Handle both array and object formats from Gemini
+    data = parsed[0] if isinstance(parsed, list) else parsed
+
+    # Extract and validate date of birth from RAMQ
+    ramq = data["ramq"]
+    # Remove any spaces from the RAMQ number
+    ramq = ramq.replace(" ", "")
+    year = int(ramq[4:6])
+    month = int(ramq[6:8])
+    day = int(ramq[8:10])
+
+    # Adjust year for century and ensure it is <= current year
+    current_year = datetime.now().year
+    if year > 50:
+        year += 1900
+    else:
+        year += 2000
+
+    if year > current_year:
+        year -= 100
+
+    # Adjust month for gender
+    gender = None
+    gender_digit = int(ramq[6])
+
+    if gender_digit in [0, 1]:
+        gender = "male"
+    else:
+        gender = 'female'
+        month -= 50
+
+
+    dob_str = f"{year}-{month:02d}-{day:02d}"
+
+    # Validate dob
     try:
-        # Clean the response to ensure it's valid JSON
-        response = response.strip()
-        # If response contains text before or after JSON, extract just the JSON part
-        if not response.startswith('{'):
-            start_idx = response.find('{')
-            if start_idx != -1:
-                end_idx = response.rfind('}') + 1
-                if end_idx > start_idx:
-                    response = response[start_idx:end_idx]
-        
-        data = json.loads(response)
-        
-        # Ensure required fields exist
-        if "ramq" not in data or "first_name" not in data or "last_name" not in data:
-            raise ValueError("Missing required fields in response")
-            
+        dob = datetime.strptime(dob_str, "%Y-%m-%d")
+    except ValueError:
+        print(f"Unsupported date format: {dob_str}")
+        dob = datetime.now()
+
+    person_info = PersonInfo(
+        first_name=data["first_name"],
+        last_name=data["last_name"],
+        date_of_birth=dob,
+        gender=gender,
+        ramq=data["ramq"],
+        mrn=data.get("mrn")
+    )
+
+    is_valid = validate_ramq(data["ramq"])
+
+    return (
+        person_info.ramq,
+        person_info.last_name,
+        person_info.first_name,
+        person_info.date_of_birth,
+        person_info.gender,
+        is_valid,
+        person_info.mrn
+    )
+
+
+def get_ramq_from_bytes(image_data: bytes, content_type: str = "image/jpeg"):
+    """
+    Extract RAMQ from image bytes directly (useful for testing different sizes).
+    """
+    try:
+        prompt = "Perform OCR. Extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. First name starts with the 4th letter of the RAMQ AND Should be a name! Extract the person's first name, last name, date of birth, and RAMQ number. Output as JSON with keys: 'first_name', 'last_name', and 'ramq'. Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object."
+
+        # Build the content for Gemini
+        contents = [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_bytes(data=image_data, mime_type=content_type),
+                    types.Part.from_text(text=prompt),
+                ],
+            ),
+        ]
+
+        # Configure the generation
+        config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+        )
+
+        # Call Gemini API
+        message = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=contents,
+            config=config,
+        )
+
+        response = message.text
+
+        # Parse the JSON response
+        parsed = json.loads(response)
+        # Handle both array and object formats from Gemini
+        data = parsed[0] if isinstance(parsed, list) else parsed
+
         # Extract and validate date of birth from RAMQ
         ramq = data["ramq"]
         # Remove any spaces from the RAMQ number
         ramq = ramq.replace(" ", "")
-        
-        # Ensure RAMQ is correctly formatted
-        if not re.match(r"^[A-Z]{4}\d{8}$", ramq):
-            raise ValueError(f"Invalid RAMQ format: {ramq}")
-            
         year = int(ramq[4:6])
         month = int(ramq[6:8])
         day = int(ramq[8:10])
@@ -287,7 +418,7 @@ def get_ramq(input_data, is_image=True):
         gender = None
         gender_digit = int(ramq[6])
 
-        if gender_digit in [0, 1, 2, 3, 4]:
+        if gender_digit in {0, 1}:
             gender = "male"
         else:
             gender = 'female'
@@ -299,7 +430,6 @@ def get_ramq(input_data, is_image=True):
         try:
             dob = datetime.strptime(dob_str, "%Y-%m-%d")
         except ValueError:
-            print(f"Unsupported date format: {dob_str}")
             dob = datetime.now()
 
         person_info = PersonInfo(
@@ -307,8 +437,7 @@ def get_ramq(input_data, is_image=True):
             last_name=data["last_name"],
             date_of_birth=dob,
             gender=gender,
-            ramq=ramq,
-            mrn=data.get("mrn", "")
+            ramq=ramq
         )
 
         is_valid = validate_ramq(ramq)
@@ -319,15 +448,11 @@ def get_ramq(input_data, is_image=True):
             person_info.first_name,
             person_info.date_of_birth,
             person_info.gender,
-            is_valid,
-            person_info.mrn or ""
+            is_valid
         )
-    except json.JSONDecodeError as e:
-        print(f"JSON parsing error: {str(e)}, Response: {response}")
-        raise ValueError(f"Failed to parse response as JSON: {str(e)}")
     except Exception as e:
-        print(f"Error processing response: {str(e)}")
-        raise ValueError(f"Error processing response: {str(e)}")
+        raise ValueError(f"Error processing image: {str(e)}") from e
+
 
 def get_patient_list(input_data: str, is_image: bool = True, additional_prompt: str = ""):
     base_prompt = "Extract a list of patients from the image or text. For each patient, provide their first name and last name. If available, also include their patient number and room number. Output as JSON with a 'patients' key containing a list of patient objects. Each patient object should have keys: first_name, last_name, and optionally patient_number and room_number. "
@@ -336,72 +461,63 @@ def get_patient_list(input_data: str, is_image: bool = True, additional_prompt: 
     if is_image:
         try:
             # Get image data
-            image_response = httpx.get(
-                input_data, 
-                timeout=httpx.Timeout(30.0, connect=30.0)
-            )
-            
-            # Resize image if it exceeds 5 MB
+            image_response = httpx.get(input_data)
             image_data = image_response.content
-            if len(image_data) > 5 * 1024 * 1024:
-                image_data = resize_image(image_data)
-                
-            image_data_b64 = base64.b64encode(image_data).decode("utf-8")
-            image_media_type = image_response.headers.get('content-type', 'image/jpeg')
+            content_type = image_response.headers.get('content-type', 'image/jpeg')
 
-            # Create message with image
-            message = anthropic.Anthropic(
-                timeout=httpx.Timeout(60.0, connect=30.0)
-            ).messages.create(
-                model="claude-3-sonnet-20240229",
-                max_tokens=1024,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": prompt
-                            },
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": image_media_type,
-                                    "data": image_data_b64,
-                                }
-                            }
-                        ]
-                    }
-                ]
+            # Build the content for Gemini
+            contents = [
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_bytes(data=image_data, mime_type=content_type),
+                        types.Part.from_text(text=prompt),
+                    ],
+                ),
+            ]
+
+            # Configure the generation
+            config = types.GenerateContentConfig(
+                response_mime_type="application/json",
             )
-            response = message.content[0].text
 
-        except httpx.TimeoutException as e:
-            raise ValueError(f"Timeout processing image: {str(e)}")
+            # Call Gemini API
+            message = gemini_client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=contents,
+                config=config,
+            )
+            response = message.text
+
         except Exception as e:
             raise ValueError(f"Error processing image: {str(e)}")
     else:
-        try:
-            # Text-only message
-            message = anthropic.Anthropic(
-                timeout=httpx.Timeout(60.0, connect=30.0)
-            ).messages.create(
-                model="claude-3-sonnet-20240229",
-                max_tokens=1024,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"{prompt} Here is the text: {input_data}"
-                    }
-                ]
-            )
-            response = message.content[0].text
-        except httpx.TimeoutException as e:
-            raise ValueError(f"Timeout processing text: {str(e)}")
-        except Exception as e:
-            raise ValueError(f"Error processing text: {str(e)}")
-            
+        # Text-only message
+        full_prompt = f"{prompt} Here is the text: {input_data}"
+
+        # Build the content for Gemini
+        contents = [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(text=full_prompt),
+                ],
+            ),
+        ]
+
+        # Configure the generation
+        config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+        )
+
+        # Call Gemini API
+        message = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=contents,
+            config=config,
+        )
+        response = message.text
+
     # Parse the JSON response
     try:
         # Remove any leading/trailing whitespace and ensure we have valid JSON
@@ -414,13 +530,9 @@ def get_patient_list(input_data: str, is_image: bool = True, additional_prompt: 
                 cleaned_response = cleaned_response[start_idx:end_idx]
             else:
                 raise ValueError("No valid JSON found in response")
-                
+
         data = json.loads(cleaned_response)
-        
-        # Ensure 'patients' key exists
-        if 'patients' not in data:
-            raise ValueError("Response does not contain 'patients' key")
-            
+
         patients = []
         for patient_data in data["patients"]:
             # Only include room_number if it exists and is not empty/None
@@ -429,7 +541,7 @@ def get_patient_list(input_data: str, is_image: bool = True, additional_prompt: 
                 room_number = str(room_number).strip()
             else:
                 room_number = None
-                
+
             patient = PatientInfo(
                 first_name=patient_data["first_name"],
                 last_name=patient_data["last_name"],
@@ -440,11 +552,4 @@ def get_patient_list(input_data: str, is_image: bool = True, additional_prompt: 
 
         return PatientList(patients=patients)
     except json.JSONDecodeError as e:
-        print(f"Failed to parse response as JSON: {str(e)}\nResponse was: {response}")
-        raise ValueError(f"Failed to parse response as JSON: {str(e)}")
-    except KeyError as e:
-        print(f"Missing required field in JSON: {str(e)}\nResponse was: {response}")
-        raise ValueError(f"Missing required field in JSON: {str(e)}")
-    except Exception as e:
-        print(f"Error processing response: {str(e)}\nResponse was: {response}")
-        raise ValueError(f"Error processing response: {str(e)}")
+        raise ValueError(f"Failed to parse response as JSON: {str(e)}\nResponse was: {response}")

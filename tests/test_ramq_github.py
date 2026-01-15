@@ -1,4 +1,8 @@
 import unittest
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from datetime import datetime
 from anthropic_vision_script import get_ramq, resize_image
 import httpx
@@ -46,7 +50,9 @@ class TestRAMQProcessing(unittest.TestCase):
                 self.assertIsInstance(dob, datetime)  # Changed from str to datetime
                 self.assertIsInstance(gender, str)
                 self.assertIsInstance(is_valid, bool)
-                self.assertIsInstance(mrn, str)
+                # mrn can be None or str
+                self.assertTrue(mrn is None or isinstance(mrn, str))
+
     def test_gender_validation(self):
         """Test if gender is correctly extracted from RAMQ."""
         for url in self.test_urls:
