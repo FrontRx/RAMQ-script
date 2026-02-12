@@ -19,13 +19,14 @@ def main():
 
     try:
         if args.mode == 'ramq':
-            ramq, last_name, first_name, dob, gender, is_valid = get_ramq(args.input, is_image)
+            ramq, last_name, first_name, dob, gender, is_valid, mrn = get_ramq(args.input, is_image)
             print(f"RAMQ: {ramq}")
             print(f"Last Name: {last_name}")
             print(f"First Name: {first_name}")
             print(f"Date of Birth: {dob}")
             print(f"Gender: {gender}")
             print(f"Valid: {is_valid}")
+            print(f"MRN: {mrn}")
         else:
             patients = get_patient_list(args.input, is_image)
             print("\nPatient List:")
