@@ -31,13 +31,9 @@ GEMINI_MODEL = "gemini-flash-latest"
 class PersonInfo(BaseModel):
     first_name: str
     last_name: str
-    date_of_birth: datetime
+    date_of_birth: Optional[datetime] = None
     gender: Optional[str] = None
-    ramq: str = Field(
-        ...,
-        pattern=r"^[A-Z]{4}\d{8}$",
-        description="RAMQ number should have 4 letters followed by 8 digits",
-    )
+    ramq: Optional[str] = Field(None, description="RAMQ number when available")
     mrn: Optional[str] = Field(None, description="Medical Record Number (MRN)")
 
 
@@ -227,6 +223,72 @@ def resize_image_to_width(image_data: bytes, target_width: int, output_format: s
     return buffer.getvalue()
 
 
+def normalize_ramq(ramq: Optional[str]) -> Optional[str]:
+    """Normalize RAMQ to 4 letters + 8 digits when possible."""
+    if not ramq:
+        return None
+
+    compact = re.sub(r"\s+", "", str(ramq)).upper()
+
+    if re.fullmatch(r"[A-Z]{4}\d{8}", compact):
+        return compact
+
+    match = re.search(r"[A-Z]{4}\d{8}", compact)
+    return match.group(0) if match else None
+
+
+def parse_date_string(date_text: Optional[str]) -> Optional[datetime]:
+    """Parse date from model output using several common formats."""
+    if not date_text:
+        return None
+
+    cleaned = str(date_text).strip()
+    if not cleaned:
+        return None
+
+    formats = [
+        "%Y-%m-%d",
+        "%Y/%m/%d",
+        "%d-%m-%Y",
+        "%d/%m/%Y",
+        "%m-%d-%Y",
+        "%m/%d/%Y",
+    ]
+
+    for fmt in formats:
+        try:
+            return datetime.strptime(cleaned, fmt)
+        except ValueError:
+            continue
+
+    return None
+
+
+def extract_birth_info_from_ramq(ramq: str):
+    """Return (dob, gender, is_valid_ramq) for a normalized RAMQ."""
+    year = int(ramq[4:6])
+    month = int(ramq[6:8])
+    day = int(ramq[8:10])
+
+    current_year = datetime.now().year
+    year += 1900 if year > 50 else 2000
+    if year > current_year:
+        year -= 100
+
+    if month > 50:
+        gender = "female"
+        month -= 50
+    else:
+        gender = "male"
+
+    try:
+        dob = datetime(year, month, day)
+    except ValueError:
+        dob = None
+
+    return dob, gender, validate_ramq(ramq)
+
+
 def get_ramq(input_data, is_image=True):
     if is_image:
         try:
@@ -240,7 +302,7 @@ def get_ramq(input_data, is_image=True):
             # Determine media type based on content
             content_type = image_response.headers.get('content-type', 'image/jpeg')
 
-            prompt = "Perform OCR. Extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. First name starts with the 4th letter of the RAMQ AND Should be a name! Extract the person's first name, last name, date of birth, and RAMQ number. Also extract the MRN (Medical Record Number) if present. Output as JSON with keys: 'first_name', 'last_name', 'ramq', and 'mrn' (null if not found). Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object."
+            prompt = "Perform OCR. Extract the person's first name, last name, date of birth, RAMQ number, and MRN (Medical Record Number). Output JSON with keys: 'first_name', 'last_name', 'date_of_birth', 'ramq', and 'mrn'. If RAMQ is missing or unreadable, set 'ramq' to null and still return other fields. If date of birth is missing, set it to null. If MRN is missing, set it to null. When RAMQ is present, normalize it to 4 letters followed by 8 digits with no spaces. Do not include text outside the JSON object."
 
             # Build the content for Gemini
             contents = [
@@ -269,7 +331,7 @@ def get_ramq(input_data, is_image=True):
         except Exception as e:
             raise ValueError(f"Error processing image: {str(e)}")
     else:
-        prompt = f"From this text locate and extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. First name starts with the 4th letter of the RAMQ AND Should be a name! Extract the person's first name, last name, and RAMQ number. Also extract the MRN (Medical Record Number) if present. For the date of birth, convert any 2-digit year to a 4-digit year (if year > 50, add 1900, else add 2000). Format the date as YYYY-MM-DD and double check that the date is valid (i.e. DD is <= 31, YYYY < current year and MM <= 12). Output as JSON with keys: 'first_name', 'last_name', 'ramq', 'date_of_birth', and 'mrn' (null if not found). Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object. Here is the text: {input_data}"
+        prompt = f"From this text extract the person's first name, last name, date of birth, RAMQ number, and MRN (Medical Record Number). Output JSON with keys: 'first_name', 'last_name', 'date_of_birth', 'ramq', and 'mrn'. If RAMQ is missing or unreadable, set 'ramq' to null and still return other fields. If date of birth is missing, set it to null. If MRN is missing, set it to null. When RAMQ is present, normalize it to 4 letters followed by 8 digits with no spaces. Do not include text outside the JSON object. Here is the text: {input_data}"
 
         # Build the content for Gemini
         contents = [
@@ -299,54 +361,25 @@ def get_ramq(input_data, is_image=True):
     # Handle both array and object formats from Gemini
     data = parsed[0] if isinstance(parsed, list) else parsed
 
-    # Extract and validate date of birth from RAMQ
-    ramq = data["ramq"]
-    # Remove any spaces from the RAMQ number
-    ramq = ramq.replace(" ", "")
-    year = int(ramq[4:6])
-    month = int(ramq[6:8])
-    day = int(ramq[8:10])
+    ramq = normalize_ramq(data.get("ramq"))
+    extracted_dob = parse_date_string(data.get("date_of_birth"))
 
-    # Adjust year for century and ensure it is <= current year
-    current_year = datetime.now().year
-    if year > 50:
-        year += 1900
-    else:
-        year += 2000
-
-    if year > current_year:
-        year -= 100
-
-    # Adjust month for gender
     gender = None
-    gender_digit = int(ramq[6])
+    is_valid = False
+    dob = extracted_dob
 
-    if gender_digit in [0, 1]:
-        gender = "male"
-    else:
-        gender = 'female'
-        month -= 50
-
-
-    dob_str = f"{year}-{month:02d}-{day:02d}"
-
-    # Validate dob
-    try:
-        dob = datetime.strptime(dob_str, "%Y-%m-%d")
-    except ValueError:
-        print(f"Unsupported date format: {dob_str}")
-        dob = datetime.now()
+    if ramq:
+        ramq_dob, gender, is_valid = extract_birth_info_from_ramq(ramq)
+        dob = ramq_dob or extracted_dob
 
     person_info = PersonInfo(
         first_name=data["first_name"],
         last_name=data["last_name"],
         date_of_birth=dob,
         gender=gender,
-        ramq=data["ramq"],
+        ramq=ramq,
         mrn=data.get("mrn")
     )
-
-    is_valid = validate_ramq(data["ramq"])
 
     return (
         person_info.ramq,
@@ -364,7 +397,7 @@ def get_ramq_from_bytes(image_data: bytes, content_type: str = "image/jpeg"):
     Extract RAMQ from image bytes directly (useful for testing different sizes).
     """
     try:
-        prompt = "Perform OCR. Extract the RAMQ number, which MUST have exactly 4 letters followed by exactly 8 digits, totaling 12 characters. Remove all spaces from RAMQ. The first 3 letters of RAMQ are the person's last name use that to look up the last name in the text. First name starts with the 4th letter of the RAMQ AND Should be a name! Extract the person's first name, last name, date of birth, and RAMQ number. Output as JSON with keys: 'first_name', 'last_name', and 'ramq'. Ensure the RAMQ is exactly 12 characters (4 letters + 8 digits). Double-check your output before responding. Do not be VERBOSE and DO NOT include any text outside the JSON object."
+        prompt = "Perform OCR. Extract the person's first name, last name, date of birth, and RAMQ number. Output JSON with keys: 'first_name', 'last_name', 'date_of_birth', and 'ramq'. If RAMQ is missing or unreadable set it to null and still return the other fields."
 
         # Build the content for Gemini
         contents = [
@@ -396,41 +429,16 @@ def get_ramq_from_bytes(image_data: bytes, content_type: str = "image/jpeg"):
         # Handle both array and object formats from Gemini
         data = parsed[0] if isinstance(parsed, list) else parsed
 
-        # Extract and validate date of birth from RAMQ
-        ramq = data["ramq"]
-        # Remove any spaces from the RAMQ number
-        ramq = ramq.replace(" ", "")
-        year = int(ramq[4:6])
-        month = int(ramq[6:8])
-        day = int(ramq[8:10])
+        ramq = normalize_ramq(data.get("ramq"))
+        extracted_dob = parse_date_string(data.get("date_of_birth"))
 
-        # Adjust year for century and ensure it is <= current year
-        current_year = datetime.now().year
-        if year > 50:
-            year += 1900
-        else:
-            year += 2000
-
-        if year > current_year:
-            year -= 100
-
-        # Adjust month for gender
         gender = None
-        gender_digit = int(ramq[6])
+        is_valid = False
+        dob = extracted_dob
 
-        if gender_digit in {0, 1}:
-            gender = "male"
-        else:
-            gender = 'female'
-            month -= 50
-
-        dob_str = f"{year}-{month:02d}-{day:02d}"
-
-        # Validate dob
-        try:
-            dob = datetime.strptime(dob_str, "%Y-%m-%d")
-        except ValueError:
-            dob = datetime.now()
+        if ramq:
+            ramq_dob, gender, is_valid = extract_birth_info_from_ramq(ramq)
+            dob = ramq_dob or extracted_dob
 
         person_info = PersonInfo(
             first_name=data["first_name"],
@@ -439,8 +447,6 @@ def get_ramq_from_bytes(image_data: bytes, content_type: str = "image/jpeg"):
             gender=gender,
             ramq=ramq
         )
-
-        is_valid = validate_ramq(ramq)
 
         return (
             person_info.ramq,
