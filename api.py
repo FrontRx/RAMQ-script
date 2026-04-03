@@ -1,7 +1,7 @@
 import os
 import re
 from flask import Flask,jsonify,request
-from anthropic_vision_script import get_ramq, validate_ramq
+from anthropic_vision_script import get_ramq, validate_ramq, validate_ohip, normalize_ohip
 
 app = Flask(__name__)
 
@@ -44,18 +44,23 @@ def extract_json_from_image():
             input_data = image_url
 
         try:
-            ramq, last_name, first_name, dob, gender, valid_ramq, mrn = get_ramq(input_data, is_image)
-            
+            (ramq, last_name, first_name, dob, gender, valid_ramq, mrn,
+             ohip, valid_ohip, insurance_type, insurance_id) = get_ramq(input_data, is_image)
+
             # Format date correctly
             formatted_date = dob.strftime("%Y-%m-%d") if dob else None
-            
+
             return jsonify({
                 "ramq": ramq,
+                "ohip": ohip,
+                "insurance_type": insurance_type,
+                "insurance_id": insurance_id,
                 "last_name": last_name,
                 "first_name": first_name,
                 "dob": formatted_date,
                 "gender": gender,
                 "valid_ramq": valid_ramq,
+                "valid_ohip": valid_ohip,
                 "mrn": mrn
             })
 
@@ -89,6 +94,28 @@ def ramq_validation():
             print(f"RAMQ validation error: {str(e)}", flush=True)
             return jsonify({"error": str(e), "valid": False}), 500
             
+    except Exception as e:
+        print(f"API error: {str(e)}", flush=True)
+        return jsonify({"error": "An error occurred while processing the request"}), 500
+
+
+@app.route('/validate_ohip', methods=['GET'])
+def ohip_validation():
+    try:
+        ohip = request.args.get('ohip')
+        if ohip is None:
+            return jsonify({"error": "Missing ohip query parameter"}), 400
+
+        result = normalize_ohip(ohip)
+        if result is None:
+            return jsonify({"valid": False, "number": None, "version_code": None})
+
+        return jsonify({
+            "valid": True,
+            "number": result["number"],
+            "version_code": result["version_code"],
+        })
+
     except Exception as e:
         print(f"API error: {str(e)}", flush=True)
         return jsonify({"error": "An error occurred while processing the request"}), 500
