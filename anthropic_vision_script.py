@@ -34,6 +34,7 @@ class PersonInfo(BaseModel):
     date_of_birth: Optional[datetime] = None
     gender: Optional[str] = None
     ramq: Optional[str] = Field(None, description="RAMQ number when available")
+    ohip: Optional[str] = Field(None, description="OHIP number when available (10 digits + optional 2-letter version code)")
     mrn: Optional[str] = Field(None, description="Medical Record Number (MRN)")
 
 
@@ -223,6 +224,29 @@ def resize_image_to_width(image_data: bytes, target_width: int, output_format: s
     return buffer.getvalue()
 
 
+def normalize_ohip(ohip: Optional[str]) -> Optional[dict]:
+    """Normalize OHIP number to 10 digits + optional 2-letter version code."""
+    if not ohip:
+        return None
+
+    compact = re.sub(r"[\s\-]+", "", str(ohip)).upper()
+
+    match = re.fullmatch(r"(\d{10})([A-Z]{2})?", compact)
+    if not match:
+        return None
+
+    return {
+        "number": match.group(1),
+        "version_code": match.group(2) or None,
+    }
+
+
+def validate_ohip(ohip: str) -> bool:
+    """Validate OHIP number format: 10 digits + optional 2-letter version code."""
+    compact = re.sub(r"[\s\-]+", "", str(ohip)).upper()
+    return bool(re.fullmatch(r"\d{10}([A-Z]{2})?", compact))
+
+
 def normalize_ramq(ramq: Optional[str]) -> Optional[str]:
     """Normalize RAMQ to 4 letters + 8 digits when possible."""
     if not ramq:
@@ -302,7 +326,7 @@ def get_ramq(input_data, is_image=True):
             # Determine media type based on content
             content_type = image_response.headers.get('content-type', 'image/jpeg')
 
-            prompt = "Perform OCR. Extract the person's first name, last name, date of birth, RAMQ number, and MRN (Medical Record Number). Output JSON with keys: 'first_name', 'last_name', 'date_of_birth', 'ramq', and 'mrn'. If RAMQ is missing or unreadable, set 'ramq' to null and still return other fields. If date of birth is missing, set it to null. If MRN is missing, set it to null. When RAMQ is present, normalize it to 4 letters followed by 8 digits with no spaces. Do not include text outside the JSON object."
+            prompt = "Perform OCR. Extract the person's first name, last name, date of birth, RAMQ number (Quebec), OHIP number (Ontario), and MRN (Medical Record Number). Output JSON with keys: 'first_name', 'last_name', 'date_of_birth', 'ramq', 'ohip', and 'mrn'. If RAMQ is missing or unreadable, set 'ramq' to null. If OHIP is missing or unreadable, set 'ohip' to null. Still return all other fields. If date of birth is missing, set it to null. If MRN is missing, set it to null. When RAMQ is present, normalize it to 4 letters followed by 8 digits with no spaces. When OHIP is present, include the 10 digits and optional 2-letter version code with no spaces. Do not include text outside the JSON object."
 
             # Build the content for Gemini
             contents = [
@@ -331,7 +355,7 @@ def get_ramq(input_data, is_image=True):
         except Exception as e:
             raise ValueError(f"Error processing image: {str(e)}")
     else:
-        prompt = f"From this text extract the person's first name, last name, date of birth, RAMQ number, and MRN (Medical Record Number). Output JSON with keys: 'first_name', 'last_name', 'date_of_birth', 'ramq', and 'mrn'. If RAMQ is missing or unreadable, set 'ramq' to null and still return other fields. If date of birth is missing, set it to null. If MRN is missing, set it to null. When RAMQ is present, normalize it to 4 letters followed by 8 digits with no spaces. Do not include text outside the JSON object. Here is the text: {input_data}"
+        prompt = f"From this text extract the person's first name, last name, date of birth, RAMQ number (Quebec), OHIP number (Ontario), and MRN (Medical Record Number). Output JSON with keys: 'first_name', 'last_name', 'date_of_birth', 'ramq', 'ohip', and 'mrn'. If RAMQ is missing or unreadable, set 'ramq' to null. If OHIP is missing or unreadable, set 'ohip' to null. Still return all other fields. If date of birth is missing, set it to null. If MRN is missing, set it to null. When RAMQ is present, normalize it to 4 letters followed by 8 digits with no spaces. When OHIP is present, include the 10 digits and optional 2-letter version code with no spaces. Do not include text outside the JSON object. Here is the text: {input_data}"
 
         # Build the content for Gemini
         contents = [
@@ -362,15 +386,36 @@ def get_ramq(input_data, is_image=True):
     data = parsed[0] if isinstance(parsed, list) else parsed
 
     ramq = normalize_ramq(data.get("ramq"))
+    ohip_result = normalize_ohip(data.get("ohip"))
+    ohip_str = None
+    if ohip_result:
+        ohip_str = ohip_result["number"]
+        if ohip_result["version_code"]:
+            ohip_str += ohip_result["version_code"]
+
     extracted_dob = parse_date_string(data.get("date_of_birth"))
 
     gender = None
-    is_valid = False
+    is_valid_ramq = False
+    is_valid_ohip = False
     dob = extracted_dob
 
     if ramq:
-        ramq_dob, gender, is_valid = extract_birth_info_from_ramq(ramq)
+        ramq_dob, gender, is_valid_ramq = extract_birth_info_from_ramq(ramq)
         dob = ramq_dob or extracted_dob
+
+    if ohip_str:
+        is_valid_ohip = validate_ohip(ohip_str)
+
+    # Determine insurance type
+    insurance_type = None
+    insurance_id = None
+    if ramq:
+        insurance_type = "RAMQ"
+        insurance_id = ramq
+    elif ohip_str:
+        insurance_type = "OHIP"
+        insurance_id = ohip_str
 
     person_info = PersonInfo(
         first_name=data["first_name"],
@@ -378,6 +423,7 @@ def get_ramq(input_data, is_image=True):
         date_of_birth=dob,
         gender=gender,
         ramq=ramq,
+        ohip=ohip_str,
         mrn=data.get("mrn")
     )
 
@@ -387,8 +433,12 @@ def get_ramq(input_data, is_image=True):
         person_info.first_name,
         person_info.date_of_birth,
         person_info.gender,
-        is_valid,
-        person_info.mrn
+        is_valid_ramq,
+        person_info.mrn,
+        person_info.ohip,
+        is_valid_ohip,
+        insurance_type,
+        insurance_id,
     )
 
 
